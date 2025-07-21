@@ -1,3 +1,4 @@
+#include <array>
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
@@ -271,6 +272,32 @@ constexpr bitboard_t base_attack_bb(square_t sq, color_t c)
 {
     return pc == PAWN ? bb_pawn_base_attack[c][sq] : bb_piece_base_attack[pc - KNIGHT][sq];
 }
+
+constexpr int popcount(uint64_t x)
+{
+    int count = 0;
+    while (x)
+    {
+        x &= (x - 1);
+        ++count;
+    }
+    return count;
+}
+
+constexpr size_t compute_bishop_magic_sz()
+{
+    size_t     ret = 0;
+    bitboard_t no_sides =
+        bb_full & ~file_bb(FILE_A) & ~file_bb(FILE_H) & ~rank_bb(RANK_1) & ~rank_bb(RANK_8);
+    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    {
+        ret +=
+            1ULL << (popcount(
+                sliding_attack_bb<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(sq) & no_sides));
+    }
+    return ret;
+}
+constexpr size_t bishop_attacks_sz = compute_bishop_magic_sz();
 
 void        init_bb_from_to();
 void        init_bb_base_attacks();
