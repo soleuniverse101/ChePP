@@ -2,8 +2,8 @@
 #include <sstream>
 
 bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
-bitboard_t bb_piece_default_attack[NB_PIECES - KNIGHT][NB_SQUARES];
-bitboard_t bb_pawn_default_attack[NB_COLORS][NB_SQUARES];
+bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
+bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
 
 void init_bb_from_to()
 {
@@ -36,15 +36,27 @@ void init_bb_from_to()
     }
 }
 
-void init_bb_piece_default_attacks()
+void init_bb_base_attacks()
 {
-    for (square_t sq1 = A1; sq1 < NB_SQUARES; ++sq1)
+    for (square_t sq = A1; sq < NB_SQUARES; ++sq)
     {
-        for (square_t sq2 = A1; sq2 < NB_SQUARES; ++sq2)
-        {
-            bb_piece_default_attack[KNIGHT - KNIGHT];
-            for (int offset : {})
-        }
+        bitboard_t bb                  = square_to_bb(sq);
+        bb_pawn_base_attack[WHITE][sq] = move_dir_bb<NORTH_WEST>(bb) | move_dir_bb<NORTH_EAST>(bb);
+        bb_pawn_base_attack[BLACK][sq] = move_dir_bb<SOUTH_WEST>(bb) | move_dir_bb<SOUTH_EAST>(bb);
+        bb_piece_base_attack[KNIGHT - KNIGHT][sq] =
+            move_dir_bb<NORTH, NORTH, EAST>(bb) | move_dir_bb<NORTH, NORTH, WEST>(bb) |
+            move_dir_bb<SOUTH, SOUTH, EAST>(bb) | move_dir_bb<SOUTH, SOUTH, WEST>(bb) |
+            move_dir_bb<EAST, EAST, NORTH>(bb) | move_dir_bb<EAST, EAST, SOUTH>(bb) |
+            move_dir_bb<WEST, WEST, NORTH>(bb) | move_dir_bb<WEST, WEST, SOUTH>(bb);
+        bb_piece_base_attack[BISHOP - KNIGHT][sq] =
+            sliding_attack_bb<NORTH_EAST, SOUTH_EAST, NORTH_WEST, SOUTH_WEST>(sq);
+        bb_piece_base_attack[ROOK - KNIGHT][sq] = sliding_attack_bb<NORTH, SOUTH, NORTH, SOUTH>(sq);
+        bb_piece_base_attack[QUEEN - KNIGHT][sq] =
+            bb_piece_base_attack[BISHOP - KNIGHT][sq] | bb_piece_base_attack[ROOK - KNIGHT][sq];
+        bb_piece_base_attack[KING - KNIGHT][sq] =
+            move_dir_bb<NORTH>(bb) | move_dir_bb<SOUTH>(bb) | move_dir_bb<EAST>(bb) |
+            move_dir_bb<WEST>(bb) | move_dir_bb<NORTH, EAST>(bb) | move_dir_bb<NORTH, WEST>(bb) |
+            move_dir_bb<SOUTH, EAST>(bb) | move_dir_bb<SOUTH, WEST>(bb);
     }
 }
 
@@ -69,6 +81,7 @@ std::string bb_format_string(bitboard_t bb)
 int main(void)
 {
     init_bb_from_to();
+    init_bb_base_attacks();
     bitboard_t bb = bb_from_to[A1][G7];
     int        df = file_of(A2) - file_of(B2);
     int        dr = rank_of(A2) - rank_of(B2);
@@ -78,4 +91,7 @@ int main(void)
     assert(bb_from_to[B2][A1] == sliding_attack_bb<SOUTH_WEST>(C3, 0, 2));
     std::cout << bb_format_string(bb);
     std::cout << bb_format_string(sliding_attack_bb<NORTH, SOUTH, NORTH_WEST>(C2));
+    std::cout << bb_format_string(bb_piece_base_attack[KNIGHT - KNIGHT][C3]);
+    std::cout << bb_format_string(bb_pawn_base_attack[BLACK][H5]);
+    std::cout << bb_format_string(base_attack_bb<KNIGHT>(H5, WHITE));
 }

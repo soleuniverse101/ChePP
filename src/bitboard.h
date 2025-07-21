@@ -105,7 +105,7 @@ typedef enum piece_t : int8_t
     NO_PIECE = -1,
     PAWN     = 0,
     KNIGHT,
-    BISOP,
+    BISHOP,
     ROOK,
     QUEEN,
     KING,
@@ -197,6 +197,11 @@ constexpr int direction_offset()
             return 0;
     }
 }
+template <direction_t... dirs>
+constexpr int directions_offset()
+{
+    return (direction_offset<dirs>() + ...);
+}
 
 template <direction_t dir>
 constexpr bitboard_t direction_mask()
@@ -217,15 +222,25 @@ constexpr bitboard_t direction_mask()
 }
 
 template <direction_t dir>
-constexpr bitboard_t move_dir_bb(bitboard_t bb)
+constexpr bitboard_t move_dir_bb_base(bitboard_t bb)
 {
     int        off  = direction_offset<dir>();
     bitboard_t mask = direction_mask<dir>();
     return off > 0 ? (bb & mask) << off : (bb & mask) >> -off;
 }
 
+template <direction_t First, direction_t... Rest>
+constexpr bitboard_t move_dir_bb(bitboard_t bb)
+{
+    bitboard_t moved = move_dir_bb_base<First>(bb);
+    if constexpr (sizeof...(Rest) == 0)
+        return moved;
+    else
+        return move_dir_bb<Rest...>(moved);
+}
+
 template <direction_t Dir>
-constexpr bitboard_t sliding_attack_dir_bb(square_t sq, int blockers = 0, int len = 8)
+constexpr bitboard_t sliding_attack_bb_base(square_t sq, int blockers = 0, int len = 8)
 {
     bitboard_t attacks = 0;
     bitboard_t bb      = move_dir_bb<Dir>(square_to_bb(sq));
@@ -244,12 +259,19 @@ constexpr bitboard_t sliding_attack_dir_bb(square_t sq, int blockers = 0, int le
 template <direction_t... Dirs>
 constexpr bitboard_t sliding_attack_bb(square_t sq, int blockers = 0, int len = 8)
 {
-    return (sliding_attack_dir_bb<Dirs>(sq, blockers, len) | ...);
+    return (sliding_attack_bb_base<Dirs>(sq, blockers, len) | ...);
 }
 
 extern bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
-extern bitboard_t bb_piece_default_attack[NB_PIECES - KNIGHT][NB_SQUARES];
-extern bitboard_t bb_pawn_default_attack[NB_COLORS][NB_SQUARES];
+extern bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
+extern bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
+
+template <piece_t pc>
+constexpr bitboard_t base_attack_bb(square_t sq, color_t c)
+{
+    return pc == PAWN ? bb_pawn_base_attack[c][sq] : bb_piece_base_attack[pc - KNIGHT][sq];
+}
 
 void        init_bb_from_to();
+void        init_bb_base_attacks();
 std::string bb_format_string(bitboard_t bb);
