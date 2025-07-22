@@ -211,7 +211,7 @@ constexpr bitboard_t move_dir_bb(bitboard_t bb)
 }
 
 template <direction_t Dir>
-constexpr bitboard_t sliding_attack_bb_base(square_t sq, int blockers = 0, int len = 8)
+constexpr bitboard_t sliding_attack_bb_base(square_t sq, bitboard_t blockers = 0, int len = 8)
 {
     bitboard_t attacks = 0;
     bitboard_t bb      = move_dir_bb<Dir>(square_to_bb(sq));
@@ -228,9 +228,18 @@ constexpr bitboard_t sliding_attack_bb_base(square_t sq, int blockers = 0, int l
 }
 
 template <direction_t... Dirs>
-constexpr bitboard_t sliding_attack_bb(square_t sq, int blockers = 0, int len = 8)
+constexpr bitboard_t sliding_attack_bb(square_t sq, bitboard_t blockers = 0, int len = 8)
 {
     return (sliding_attack_bb_base<Dirs>(sq, blockers, len) | ...);
+}
+
+template <piece_t pc>
+constexpr bitboard_t sliding_attack_bb(square_t sq, bitboard_t blockers = 0, int len = 8)
+{
+    static_assert(pc == BISHOP || pc == ROOK);
+    return pc == BISHOP ? sliding_attack_bb<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(
+                              sq, blockers, len)
+                        : sliding_attack_bb<NORTH, SOUTH, EAST, WEST>(sq, blockers, len);
 }
 
 extern bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
@@ -253,21 +262,60 @@ constexpr int popcount(uint64_t x)
     }
     return count;
 }
-
-constexpr size_t compute_bishop_magic_sz()
+template <piece_t pc>
+constexpr size_t compute_magic_sz()
 {
     size_t ret = 0;
     for (square_t sq = A1; sq < NB_SQUARES; sq++)
     {
-        ret += 1ULL << (popcount(
-                   sliding_attack_bb<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(sq) &
-                   bb_no_sides));
+        bitboard_t attacks = sliding_attack_bb<pc>(sq);
+        ret += 1ULL << (popcount(attacks & bb_no_sides));
     }
     return ret;
 }
-constexpr size_t  bishop_attacks_sz = compute_bishop_magic_sz();
+constexpr size_t  bishop_attacks_sz = compute_magic_sz<BISHOP>();
+constexpr size_t  rook_attacks_sz   = compute_magic_sz<ROOK>();
 extern bitboard_t bishop_attacks[bishop_attacks_sz];
+extern bitboard_t rook_attacks[rook_attacks_sz];
 
-void        init_bb_from_to();
-void        init_bb_base_attacks();
+typedef struct magic_t
+{
+    bitboard_t mask;
+    uint64_t   shift;
+    bitboard_t magic;
+    size_t     offset;
+    bitboard_t index(bitboard_t blockers)
+    {
+        return offset + (((blockers & mask) * magic) >> shift);
+    }
+} magic_t;
+
+extern magic_t bishop_magic[NB_SQUARES];
+extern magic_t rook_magics[NB_SQUARES];
+
+template <piece_t pc>
+bitboard_t attacks_bb(square_t sq, bitboard_t occupancy, color_t c = WHITE)
+{
+    switch (pc)
+    {
+        case (BISHOP):
+        {
+            return bishop_attacks[bishop_magic[sq].index(occupancy)];
+        }
+        case (ROOK):
+        {
+            return rook_attacks[rook_magics[sq].index(occupancy)];
+        }
+        case (QUEEN):
+        {
+            return attacks_bb<BISHOP>(sq, occupancy) | attacks_bb<ROOK>(sq, occupancy);
+        }
+        default:
+        {
+            return base_attack_bb<pc>(sq, c);
+        }
+    }
+}
+
+void        bb_init();
 std::string bb_format_string(bitboard_t bb);

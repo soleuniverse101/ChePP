@@ -1,10 +1,14 @@
 #include "bitboard.h"
+#include "cstring"
 #include <sstream>
 
 bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
 bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
 bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
 bitboard_t bishop_attacks[bishop_attacks_sz];
+bitboard_t rook_attacks[rook_attacks_sz];
+magic_t    bishop_magic[NB_SQUARES];
+magic_t    rook_magics[NB_SQUARES];
 
 void init_bb_from_to()
 {
@@ -49,9 +53,8 @@ void init_bb_base_attacks()
             move_dir_bb<SOUTH, SOUTH, EAST>(bb) | move_dir_bb<SOUTH, SOUTH, WEST>(bb) |
             move_dir_bb<EAST, EAST, NORTH>(bb) | move_dir_bb<EAST, EAST, SOUTH>(bb) |
             move_dir_bb<WEST, WEST, NORTH>(bb) | move_dir_bb<WEST, WEST, SOUTH>(bb);
-        bb_piece_base_attack[BISHOP - KNIGHT][sq] =
-            sliding_attack_bb<NORTH_EAST, SOUTH_EAST, NORTH_WEST, SOUTH_WEST>(sq);
-        bb_piece_base_attack[ROOK - KNIGHT][sq] = sliding_attack_bb<NORTH, SOUTH, NORTH, SOUTH>(sq);
+        bb_piece_base_attack[BISHOP - KNIGHT][sq] = sliding_attack_bb<BISHOP>(sq);
+        bb_piece_base_attack[ROOK - KNIGHT][sq]   = sliding_attack_bb<ROOK>(sq);
         bb_piece_base_attack[QUEEN - KNIGHT][sq] =
             bb_piece_base_attack[BISHOP - KNIGHT][sq] | bb_piece_base_attack[ROOK - KNIGHT][sq];
         bb_piece_base_attack[KING - KNIGHT][sq] =
@@ -80,18 +83,74 @@ static bitboard_t bb_from_mask(bitboard_t mask, int nb_ones, int n)
     return bb;
 }
 
-void init_magics()
+static uint64_t random_u64()
 {
-    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    return rand() + (((uint64_t)rand()) << 32);
+}
+static uint64_t random_magic()
+{
+    return random_u64() & random_u64() & random_u64();
+}
+
+template <piece_t pc>
+void init_magics(magic_t magics[NB_SQUARES], bitboard_t out_attacks[])
+{
+    srand(time(NULL));
+    size_t offset = 0;
+    for (square_t sq = A1; sq < NB_SQUARES; ++sq)
     {
-        bitboard_t mask         = base_attack_bb<BISHOP>(sq, WHITE) & bb_no_sides;
-        int        combinations = 1 << mask;
+        bitboard_t mask         = base_attack_bb<pc>(sq, WHITE) & bb_no_sides;
         int        nb_ones      = popcount(mask);
+        int        combinations = 1 << nb_ones;
+        int        shift        = 64 - nb_ones;
+        bitboard_t magic        = 0;
+        bitboard_t blockers[4096];
+        bitboard_t attacks[4096];
         for (int c = 0; c < combinations; c++)
         {
-            bitboard_t blockers = bb_from_mask(mask, nb_ones, c);
+            blockers[c] = bb_from_mask(mask, nb_ones, c);
+            attacks[c]  = sliding_attack_bb<pc>(sq, blockers[c]);
         }
+        uint64_t tries_map[4096];
+        memset(tries_map, 0, sizeof(tries_map));
+        for (int tries = 1;; tries++)
+        {
+            magic     = random_magic();
+            bool fail = false;
+            for (int c = 0; c < combinations; c++)
+            {
+                size_t index = (blockers[c] * magic) >> shift;
+                assert(index < combinations);
+                bitboard_t cur = out_attacks[offset + index];
+                if ((tries_map[index] == tries) && (cur != attacks[c]))
+                {
+                    fail = true;
+                    break;
+                }
+                else
+                {
+                    out_attacks[offset + index] = attacks[c];
+                    tries_map[index]            = tries;
+                }
+            }
+            if (!fail)
+            {
+                break;
+            }
+        }
+        magics[sq].offset = offset;
+        magics[sq].magic  = magic;
+        magics[sq].mask   = mask;
+        magics[sq].shift  = shift;
+        offset += combinations;
     }
+}
+void bb_init()
+{
+    init_bb_from_to();
+    init_bb_base_attacks();
+    init_magics<BISHOP>(bishop_magic, bishop_attacks);
+    init_magics<ROOK>(rook_magics, rook_attacks);
 }
 
 std::string bb_format_string(bitboard_t bb)
@@ -114,8 +173,7 @@ std::string bb_format_string(bitboard_t bb)
 
 int main(void)
 {
-    init_bb_from_to();
-    init_bb_base_attacks();
+    bb_init();
     bitboard_t bb = bb_from_to[A1][G7];
     int        df = file_of(A2) - file_of(B2);
     int        dr = rank_of(A2) - rank_of(B2);
@@ -128,4 +186,9 @@ int main(void)
     std::cout << bb_format_string(bb_piece_base_attack[KNIGHT - KNIGHT][C3]);
     std::cout << bb_format_string(bb_pawn_base_attack[BLACK][H5]);
     std::cout << bb_format_string(base_attack_bb<KNIGHT>(H5, WHITE));
+    std::cout << bb_format_string(square_to_bb(D6));
+    std::cout << bb_format_string(bishop_attacks[bishop_magic[C5].index(square_to_bb(D6))]);
+    std::cout << bb_format_string(sliding_attack_bb<NORTH_EAST>(C5, square_to_bb(D6)));
+    std::cout << bb_format_string(rook_attacks[rook_magics[C5].index(square_to_bb(E5))]);
+    std::cout << bb_format_string(attacks_bb<QUEEN>(D5, square_to_bb(E6)));
 }
