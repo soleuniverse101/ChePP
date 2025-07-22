@@ -305,10 +305,10 @@ constexpr size_t compute_magic_sz()
     }
     return ret;
 }
-constexpr size_t  bishop_attacks_sz = compute_magic_sz<BISHOP>();
-constexpr size_t  rook_attacks_sz   = compute_magic_sz<ROOK>();
-extern bitboard_t bishop_attacks[bishop_attacks_sz];
-extern bitboard_t rook_attacks[rook_attacks_sz];
+template <piece_t pc>
+constexpr size_t magic_attacks_sz = compute_magic_sz<pc>();
+template <piece_t pc>
+extern bitboard_t magic_attacks[compute_magic_sz<pc>()];
 
 typedef struct magic_t
 {
@@ -322,31 +322,24 @@ typedef struct magic_t
     }
 } magic_t;
 
-extern magic_t bishop_magic[NB_SQUARES];
-extern magic_t rook_magics[NB_SQUARES];
+template <piece_t pc>
+extern magic_t magics[NB_SQUARES];
 
 // returns the attack bitboard. Sliders stop at the first occupant.
 template <piece_t pc>
 bitboard_t attacks_bb(square_t sq, bitboard_t occupancy, color_t c = WHITE)
 {
-    switch (pc)
+    if constexpr (pc == ROOK || pc == BISHOP)
     {
-        case (BISHOP):
-        {
-            return bishop_attacks[bishop_magic[sq].index(occupancy)];
-        }
-        case (ROOK):
-        {
-            return rook_attacks[rook_magics[sq].index(occupancy)];
-        }
-        case (QUEEN):
-        {
-            return attacks_bb<BISHOP>(sq, occupancy) | attacks_bb<ROOK>(sq, occupancy);
-        }
-        default:
-        {
-            return base_attack_bb<pc>(sq, c);
-        }
+        return magic_attacks<pc>[magics<pc>[sq].index(occupancy)];
+    }
+    else if constexpr (pc == QUEEN)
+    {
+        return attacks_bb<BISHOP>(sq, occupancy) | attacks_bb<ROOK>(sq, occupancy);
+    }
+    else
+    {
+        return base_attack_bb<pc>(sq, c);
     }
 }
 

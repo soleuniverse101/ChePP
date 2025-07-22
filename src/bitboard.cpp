@@ -5,10 +5,14 @@
 bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
 bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
 bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
-bitboard_t bishop_attacks[bishop_attacks_sz];
-bitboard_t rook_attacks[rook_attacks_sz];
-magic_t    bishop_magic[NB_SQUARES];
-magic_t    rook_magics[NB_SQUARES];
+template <>
+bitboard_t magic_attacks<ROOK>[compute_magic_sz<ROOK>()];
+template <>
+bitboard_t magic_attacks<BISHOP>[compute_magic_sz<BISHOP>()];
+template <>
+magic_t magics<BISHOP>[NB_SQUARES];
+template <>
+magic_t magics<ROOK>[NB_SQUARES];
 
 void init_bb_from_to()
 {
@@ -97,32 +101,30 @@ static uint64_t random_magic()
 // if found, attack index can be found by doing index = ((blocker & relevant_mask) * magic) >> shift
 // it is the caller responsability to provide a large enough attack table
 template <piece_t pc>
-void init_magics(magic_t magics[NB_SQUARES], bitboard_t out_attacks[])
+void init_magics(uint64_t max_tries = UINT64_MAX)
 {
-    static_assert(pc == ROOK | pc == BISHOP);
-    srand(time(NULL));
+    static_assert(pc == ROOK || pc == BISHOP, "magics are only for rooks and bishops");
     size_t offset = 0;
     for (square_t sq = A1; sq < NB_SQUARES; ++sq)
     {
-        bitboard_t mask = relevancy_mask_bb<pc>(sq);
-        std::cout << bb_format_string(mask);
+        bitboard_t mask         = relevancy_mask_bb<pc>(sq);
         int        nb_ones      = popcount(mask);
         int        combinations = 1 << nb_ones;
         int        shift        = 64 - nb_ones;
         bitboard_t magic        = 0;
-        assert(combinations <= 8192);
+        assert(combinations <= 8192 &&
+               "should not be more that 8192 blockers variations, check relevancy mask");
         bitboard_t blockers[8192];
         bitboard_t attacks[8192];
-        for (int c = 0; c < combinations; c++)
+        for (int comb = 0; comb < combinations; comb++)
         {
-            blockers[c] = bb_from_mask(mask, nb_ones, c);
-            attacks[c]  = sliding_attack_bb<pc>(sq, blockers[c]);
+            blockers[comb] = bb_from_mask(mask, nb_ones, comb);
+            attacks[comb]  = sliding_attack_bb<pc>(sq, blockers[comb]);
         }
         // maps the indexes already taken, to avoid memset 0 we mark a used index by the value of
         // the try it was set in
-        uint64_t tries_map[8192];
-        memset(tries_map, 0, sizeof(tries_map));
-        for (int tries = 1;; tries++)
+        uint64_t tries_map[8192] = {};
+        for (uint64_t tries = 1;; tries++)
         {
             // if generator is changed make sure it has a high entropy
             magic     = random_magic();
@@ -131,27 +133,28 @@ void init_magics(magic_t magics[NB_SQUARES], bitboard_t out_attacks[])
             {
                 size_t index = (blockers[c] * magic) >> shift;
                 assert(index < combinations);
-                bitboard_t cur = out_attacks[offset + index];
+                bitboard_t cur = magic_attacks<pc>[offset + index];
                 if ((tries_map[index] == tries) && (cur != attacks[c]))
                 {
                     fail = true;
                     break;
                 }
-                else
-                {
-                    out_attacks[offset + index] = attacks[c];
-                    tries_map[index]            = tries;
-                }
+                magic_attacks<pc>[offset + index] = attacks[c];
+                tries_map[index]                  = tries;
             }
             if (!fail)
             {
                 break;
             }
+            if (tries == max_tries - 1)
+            {
+                assert(0 && "failed to find magic");
+            }
         }
-        magics[sq].offset = offset;
-        magics[sq].magic  = magic;
-        magics[sq].mask   = mask;
-        magics[sq].shift  = shift;
+        magics<pc>[sq].offset = offset;
+        magics<pc>[sq].magic  = magic;
+        magics<pc>[sq].mask   = mask;
+        magics<pc>[sq].shift  = shift;
         offset += combinations;
     }
 }
@@ -159,8 +162,8 @@ void bb_init()
 {
     init_bb_from_to();
     init_bb_base_attacks();
-    init_magics<BISHOP>(bishop_magic, bishop_attacks);
-    init_magics<ROOK>(rook_magics, rook_attacks);
+    init_magics<BISHOP>();
+    init_magics<ROOK>();
 }
 
 std::string bb_format_string(bitboard_t bb)
@@ -197,9 +200,8 @@ int main(void)
     std::cout << bb_format_string(bb_pawn_base_attack[BLACK][H5]);
     std::cout << bb_format_string(base_attack_bb<KNIGHT>(H5, WHITE));
     std::cout << bb_format_string(square_to_bb(D6));
-    std::cout << bb_format_string(bishop_attacks[bishop_magic[C5].index(square_to_bb(D6))]);
     std::cout << bb_format_string(sliding_attack_bb<NORTH_EAST>(C5, square_to_bb(D6)));
-    std::cout << bb_format_string(rook_attacks[rook_magics[C5].index(square_to_bb(E5))]);
     std::cout << bb_format_string(attacks_bb<QUEEN>(D5, square_to_bb(E6)));
     std::cout << bb_format_string(attacks_bb<ROOK>(H8, attacks_bb<QUEEN>(D5, 0)));
+    std::cout << bb_format_string(attacks_bb<ROOK>(H8, attacks_bb<ROOK>(G7, 0)));
 }
