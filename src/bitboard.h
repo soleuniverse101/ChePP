@@ -161,6 +161,8 @@ constexpr bitboard_t rank_bb(square_t sq)
 }
 constexpr bitboard_t bb_no_sides =
     bb_full & ~file_bb(FILE_A) & ~file_bb(FILE_H) & ~rank_bb(RANK_1) & ~rank_bb(RANK_8);
+constexpr bitboard_t bb_no_corners =
+    bb_full & ~square_to_bb(A1) & ~square_to_bb(A8) & ~square_to_bb(H1) & ~square_to_bb(H8);
 
 typedef enum direction_t : int8_t
 {
@@ -273,6 +275,25 @@ constexpr int popcount(uint64_t x)
     return count;
 }
 
+template <piece_t pc>
+constexpr bitboard_t relevancy_mask_bb(square_t sq)
+{
+    bitboard_t mask = bb_no_sides;
+    if (pc == ROOK)
+    {
+        if (rank_of(sq) == RANK_1 || rank_of(sq) == RANK_8)
+        {
+            mask |= rank_bb(sq);
+        }
+        if (file_bb(sq) == FILE_A || file_of(sq) == FILE_H)
+        {
+            mask |= file_bb(sq);
+        }
+        mask &= bb_no_corners;
+    }
+    return sliding_attack_bb<pc>(sq) & mask;
+}
+
 // computes the number of different possible attacks for rook and bishops.
 template <piece_t pc>
 constexpr size_t compute_magic_sz()
@@ -280,8 +301,7 @@ constexpr size_t compute_magic_sz()
     size_t ret = 0;
     for (square_t sq = A1; sq < NB_SQUARES; sq++)
     {
-        bitboard_t attacks = sliding_attack_bb<pc>(sq);
-        ret += 1ULL << (popcount(attacks & bb_no_sides));
+        ret += 1ULL << (popcount(relevancy_mask_bb<pc>(sq)));
     }
     return ret;
 }

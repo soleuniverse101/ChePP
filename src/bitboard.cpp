@@ -23,12 +23,12 @@ void init_bb_from_to()
                 bb_from_to[sq1][sq2] = df < 0 ? sliding_attack_bb<WEST>(sq1, 0, -df)
                                               : sliding_attack_bb<EAST>(sq1, 0, df);
             }
-            if (df == 0)
+            if (df == 0) // same rank
             {
                 bb_from_to[sq1][sq2] = dr < 0 ? sliding_attack_bb<SOUTH>(sq1, 0, -dr)
                                               : sliding_attack_bb<NORTH>(sq1, 0, dr);
             }
-            if (df == dr)
+            if (df == dr) // diagonal
             {
                 bb_from_to[sq1][sq2] = dr < 0
                                            ? (df < 0 ? sliding_attack_bb<SOUTH_WEST>(sq1, 0, -df)
@@ -64,6 +64,8 @@ void init_bb_base_attacks()
     }
 }
 
+// returns the mask with the the bits set to the corresponding bit positions in n
+// useful for generating all blocker combinations
 static bitboard_t bb_from_mask(bitboard_t mask, int nb_ones, int n)
 {
     assert(1ULL << nb_ones >= n);
@@ -91,30 +93,38 @@ static uint64_t random_magic()
 {
     return random_u64() & random_u64() & random_u64();
 }
-
+// finds magic values to create bijections between blockers and attacks for bishops and roks
+// if found, attack index can be found by doing index = ((blocker & relevant_mask) * magic) >> shift
+// it is the caller responsability to provide a large enough attack table
 template <piece_t pc>
 void init_magics(magic_t magics[NB_SQUARES], bitboard_t out_attacks[])
 {
+    static_assert(pc == ROOK | pc == BISHOP);
     srand(time(NULL));
     size_t offset = 0;
     for (square_t sq = A1; sq < NB_SQUARES; ++sq)
     {
-        bitboard_t mask         = base_attack_bb<pc>(sq, WHITE) & bb_no_sides;
+        bitboard_t mask = relevancy_mask_bb<pc>(sq);
+        std::cout << bb_format_string(mask);
         int        nb_ones      = popcount(mask);
         int        combinations = 1 << nb_ones;
         int        shift        = 64 - nb_ones;
         bitboard_t magic        = 0;
-        bitboard_t blockers[4096];
-        bitboard_t attacks[4096];
+        assert(combinations <= 8192);
+        bitboard_t blockers[8192];
+        bitboard_t attacks[8192];
         for (int c = 0; c < combinations; c++)
         {
             blockers[c] = bb_from_mask(mask, nb_ones, c);
             attacks[c]  = sliding_attack_bb<pc>(sq, blockers[c]);
         }
-        uint64_t tries_map[4096];
+        // maps the indexes already taken, to avoid memset 0 we mark a used index by the value of
+        // the try it was set in
+        uint64_t tries_map[8192];
         memset(tries_map, 0, sizeof(tries_map));
         for (int tries = 1;; tries++)
         {
+            // if generator is changed make sure it has a high entropy
             magic     = random_magic();
             bool fail = false;
             for (int c = 0; c < combinations; c++)
@@ -191,4 +201,5 @@ int main(void)
     std::cout << bb_format_string(sliding_attack_bb<NORTH_EAST>(C5, square_to_bb(D6)));
     std::cout << bb_format_string(rook_attacks[rook_magics[C5].index(square_to_bb(E5))]);
     std::cout << bb_format_string(attacks_bb<QUEEN>(D5, square_to_bb(E6)));
+    std::cout << bb_format_string(attacks_bb<ROOK>(H8, attacks_bb<QUEEN>(D5, 0)));
 }
