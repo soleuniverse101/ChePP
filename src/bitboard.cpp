@@ -1,5 +1,6 @@
 #include "bitboard.h"
 #include "cstring"
+#include <chrono>
 #include <sstream>
 
 bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
@@ -203,5 +204,21 @@ int main(void)
     std::cout << bb_format_string(sliding_attack_bb<NORTH_EAST>(C5, square_to_bb(D6)));
     std::cout << bb_format_string(attacks_bb<QUEEN>(D5, square_to_bb(E6)));
     std::cout << bb_format_string(attacks_bb<ROOK>(H8, attacks_bb<QUEEN>(D5, 0)));
-    std::cout << bb_format_string(attacks_bb<ROOK>(H8, attacks_bb<ROOK>(G7, 0)));
+    const int           iterations = 1'000'000;
+    bitboard_t          occupancy  = 0;
+    volatile bitboard_t total      = 0;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < iterations; ++i)
+    {
+        for (int sq = 0; sq < 64; ++sq)
+        {
+            total ^= attacks_bb<QUEEN>((square_t)sq, i);
+        }
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Movegen benchmark (QUEEN, " << iterations << "x64): " << elapsed.count() << "s\n";
+    std::cout << "Total (to avoid opt): " << total << "\n";
 }

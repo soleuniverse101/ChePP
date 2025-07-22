@@ -120,6 +120,15 @@ typedef enum color_t : int8_t
     NB_COLORS
 } color_t;
 
+constexpr color_t operator!(color_t c)
+{
+    return color_t(int(c) ^ 1);
+}
+constexpr color_t operator~(color_t c)
+{
+    return color_t(int(c) ^ 1);
+}
+
 constexpr bitboard_t bb_empty  = 0ULL;
 constexpr bitboard_t bb_full   = ~bb_empty;
 constexpr bitboard_t bb_file_a = 0x0101010101010101ULL;
