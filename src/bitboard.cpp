@@ -6,9 +6,9 @@ bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
 bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
 bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
 template <>
-bitboard_t magic_attacks<ROOK>[compute_magic_sz<ROOK>()];
+bitboard_t magic_attacks<ROOK>[magic_attacks_sz<ROOK>];
 template <>
-bitboard_t magic_attacks<BISHOP>[compute_magic_sz<BISHOP>()];
+bitboard_t magic_attacks<BISHOP>[magic_attacks_sz<BISHOP>];
 template <>
 magic_t magics<BISHOP>[NB_SQUARES];
 template <>

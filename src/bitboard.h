@@ -308,7 +308,7 @@ constexpr size_t compute_magic_sz()
 template <piece_t pc>
 constexpr size_t magic_attacks_sz = compute_magic_sz<pc>();
 template <piece_t pc>
-extern bitboard_t magic_attacks[compute_magic_sz<pc>()];
+extern bitboard_t magic_attacks[magic_attacks_sz<pc>];
 
 typedef struct magic_t
 {
