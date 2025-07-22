@@ -200,6 +200,8 @@ constexpr bitboard_t move_dir_bb_base(bitboard_t bb)
     return dir > 0 ? (bb & mask) << dir : (bb & mask) >> -dir;
 }
 
+// moves the bitboard in the specified directions
+// does not wrap around edged
 template <direction_t First, direction_t... Rest>
 constexpr bitboard_t move_dir_bb(bitboard_t bb)
 {
@@ -227,12 +229,18 @@ constexpr bitboard_t sliding_attack_bb_base(square_t sq, bitboard_t blockers = 0
     return attacks;
 }
 
+// computes the bitboard corresponding to a sliding attack from sqare sq in the specified
+// directions. Sliding attacks stop at (and including) the first blocker but do not include the
+// startig square
 template <direction_t... Dirs>
 constexpr bitboard_t sliding_attack_bb(square_t sq, bitboard_t blockers = 0, int len = 8)
 {
     return (sliding_attack_bb_base<Dirs>(sq, blockers, len) | ...);
 }
 
+// computes the bitboard corresponding to a sliding attack from sqare sq in the directions of the
+// piece. Sliding attacks stop at (and including) the first blocker but do not include the startig
+// square
 template <piece_t pc>
 constexpr bitboard_t sliding_attack_bb(square_t sq, bitboard_t blockers = 0, int len = 8)
 {
@@ -246,12 +254,14 @@ extern bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
 extern bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
 extern bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
 
+// Returns the base attack of a piece at a square sq. Base attacks assume an empty board
 template <piece_t pc>
 constexpr bitboard_t base_attack_bb(square_t sq, color_t c)
 {
     return pc == PAWN ? bb_pawn_base_attack[c][sq] : bb_piece_base_attack[pc - KNIGHT][sq];
 }
 
+// to be used only for precompiled code, should use platform specific instruction for runtime
 constexpr int popcount(uint64_t x)
 {
     int count = 0;
@@ -262,6 +272,8 @@ constexpr int popcount(uint64_t x)
     }
     return count;
 }
+
+// computes the number of different possible attacks for rook and bishops.
 template <piece_t pc>
 constexpr size_t compute_magic_sz()
 {
@@ -293,6 +305,7 @@ typedef struct magic_t
 extern magic_t bishop_magic[NB_SQUARES];
 extern magic_t rook_magics[NB_SQUARES];
 
+// returns the attack bitboard. Sliders stop at the first occupant.
 template <piece_t pc>
 bitboard_t attacks_bb(square_t sq, bitboard_t occupancy, color_t c = WHITE)
 {
