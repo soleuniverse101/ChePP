@@ -159,50 +159,21 @@ constexpr bitboard_t rank_bb(square_t sq)
 {
     return rank_bb(rank_of(sq));
 }
+constexpr bitboard_t bb_no_sides =
+    bb_full & ~file_bb(FILE_A) & ~file_bb(FILE_H) & ~rank_bb(RANK_1) & ~rank_bb(RANK_8);
 
-typedef enum direction_t : uint8_t
+typedef enum direction_t : int8_t
 {
-    NORTH,
-    NORTH_EAST,
-    EAST,
-    SOUTH_EAST,
-    SOUTH,
-    SOUTH_WEST,
-    WEST,
-    NORTH_WEST,
+    NORTH      = 8,
+    EAST       = 1,
+    SOUTH      = -NORTH,
+    WEST       = -EAST,
+    SOUTH_EAST = SOUTH + EAST,
+    SOUTH_WEST = SOUTH + WEST,
+    NORTH_EAST = NORTH + EAST,
+    NORTH_WEST = NORTH + WEST,
     NB_DIRECTIONS
 } direction_t;
-
-template <direction_t dir>
-constexpr int direction_offset()
-{
-    switch (dir)
-    {
-        case NORTH:
-            return 8;
-        case NORTH_EAST:
-            return 9;
-        case EAST:
-            return 1;
-        case SOUTH_EAST:
-            return -7;
-        case SOUTH:
-            return -8;
-        case SOUTH_WEST:
-            return -9;
-        case WEST:
-            return -1;
-        case NORTH_WEST:
-            return 7;
-        default:
-            return 0;
-    }
-}
-template <direction_t... dirs>
-constexpr int directions_offset()
-{
-    return (direction_offset<dirs>() + ...);
-}
 
 template <direction_t dir>
 constexpr bitboard_t direction_mask()
@@ -225,9 +196,8 @@ constexpr bitboard_t direction_mask()
 template <direction_t dir>
 constexpr bitboard_t move_dir_bb_base(bitboard_t bb)
 {
-    int        off  = direction_offset<dir>();
     bitboard_t mask = direction_mask<dir>();
-    return off > 0 ? (bb & mask) << off : (bb & mask) >> -off;
+    return dir > 0 ? (bb & mask) << dir : (bb & mask) >> -dir;
 }
 
 template <direction_t First, direction_t... Rest>
@@ -286,18 +256,17 @@ constexpr int popcount(uint64_t x)
 
 constexpr size_t compute_bishop_magic_sz()
 {
-    size_t     ret = 0;
-    bitboard_t no_sides =
-        bb_full & ~file_bb(FILE_A) & ~file_bb(FILE_H) & ~rank_bb(RANK_1) & ~rank_bb(RANK_8);
+    size_t ret = 0;
     for (square_t sq = A1; sq < NB_SQUARES; sq++)
     {
-        ret +=
-            1ULL << (popcount(
-                sliding_attack_bb<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(sq) & no_sides));
+        ret += 1ULL << (popcount(
+                   sliding_attack_bb<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(sq) &
+                   bb_no_sides));
     }
     return ret;
 }
-constexpr size_t bishop_attacks_sz = compute_bishop_magic_sz();
+constexpr size_t  bishop_attacks_sz = compute_bishop_magic_sz();
+extern bitboard_t bishop_attacks[bishop_attacks_sz];
 
 void        init_bb_from_to();
 void        init_bb_base_attacks();

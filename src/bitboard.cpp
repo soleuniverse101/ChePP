@@ -4,6 +4,7 @@
 bitboard_t bb_from_to[NB_SQUARES][NB_SQUARES];
 bitboard_t bb_piece_base_attack[NB_PIECES - KNIGHT][NB_SQUARES];
 bitboard_t bb_pawn_base_attack[NB_COLORS][NB_SQUARES];
+bitboard_t bishop_attacks[bishop_attacks_sz];
 
 void init_bb_from_to()
 {
@@ -57,6 +58,39 @@ void init_bb_base_attacks()
             move_dir_bb<NORTH>(bb) | move_dir_bb<SOUTH>(bb) | move_dir_bb<EAST>(bb) |
             move_dir_bb<WEST>(bb) | move_dir_bb<NORTH, EAST>(bb) | move_dir_bb<NORTH, WEST>(bb) |
             move_dir_bb<SOUTH, EAST>(bb) | move_dir_bb<SOUTH, WEST>(bb);
+    }
+}
+
+static bitboard_t bb_from_mask(bitboard_t mask, int nb_ones, int n)
+{
+    assert(1ULL << nb_ones >= n);
+    bitboard_t bb  = 0;
+    int        idx = 0;
+    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    {
+        if (square_to_bb(sq) & mask)
+        {
+            if (1 << idx & n)
+            {
+                bb |= square_to_bb(sq);
+            }
+            idx++;
+        }
+    }
+    return bb;
+}
+
+void init_magics()
+{
+    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    {
+        bitboard_t mask         = base_attack_bb<BISHOP>(sq, WHITE) & bb_no_sides;
+        int        combinations = 1 << mask;
+        int        nb_ones      = popcount(mask);
+        for (int c = 0; c < combinations; c++)
+        {
+            bitboard_t blockers = bb_from_mask(mask, nb_ones, c);
+        }
     }
 }
 
