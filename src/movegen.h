@@ -15,12 +15,67 @@ typedef enum movegen_type_t : int8_t
     LEGAL
 } movegen_type_t;
 
+
+typedef enum move_type_t {
+    NORMAL,
+    PROMOTION  = 1 << 14,
+    EN_PASSANT = 2 << 14,
+    CASTLING   = 3 << 14
+} move_type_t;
+
+// a move is encoded as an 16bit unsigned int
+// 0-5 bit : to square (square 0 to 63)
+// 6-11 bit : from square (square 0 to 63)
+// 12-13 bit : promotion tpiece type (shifted by KNIGHT which is the lowest promotion to fit)
+// 14-15: promotion (1), en passant (2), castling (3)
 class move_t
 {
   public:
+    constexpr explicit move_t(std::uint16_t d) : data(d) {}
+
+    constexpr move_t(square_t from, square_t to) : data((from << 6) + to) {}
+
+	// to build a move if you already know the type of move
+    template<move_type_t T>
+    static constexpr move_t make(square_t from, square_t to, piece_type_t pt = KNIGHT) {
+        return move_t(T + ((pt - KNIGHT) << 12) + (from << 6) + to);
+    }
+
+	// for sanity check
+    constexpr bool is_ok() const { return none().data != data && null().data != data; }
+
+	// for these two moves from and to are the same
+	static constexpr move_t null() { return move_t(65); }
+    static constexpr move_t none() { return move_t(0); }
+
+	constexpr bool operator==(const move_t& m) const { return data == m.data; }
+    constexpr bool operator!=(const move_t& m) const { return data != m.data; }
+
+	constexpr explicit operator bool() const { return data != 0; }
+
+    constexpr std::uint16_t raw() const { return data; }
+
+	constexpr square_t from_sq() const {
+        assert(is_ok());
+        return square_t((data >> 6) & 0x3F);
+    }
+
+    constexpr square_t to_sq() const {
+        assert(is_ok());
+        return square_t(data & 0x3F);
+    }
+
+	constexpr move_type_t type_of() const { return move_type_t(data & (3 << 14)); }
+
+    constexpr pice_type_t promotion_type() const { return piece_type_t(((data >> 12) & 3) + KNIGHT); }
+
+
     move_t(square_t from, square_t to);
     square_t from();
     square_t to();
+
+  private:
+    std::uint16_t data;
 };
 
 class move_list_t
