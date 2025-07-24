@@ -2,18 +2,16 @@
 #define MOVEGEN_H_INCLUDED
 
 #include "bitboard.h"
-#include "magics.h"
 #include "position.h"
-#include <system_error>
 
-typedef enum movegen_type_t : int8_t
+enum movegen_type_t : int8_t
 {
     QUIET,
     CAPTURE,
     ESCAPE,
-    PSEUDO_LEGAL,
+    NON_ESCAPE,
     LEGAL
-} movegen_type_t;
+};
 
 class move_t
 {
@@ -26,7 +24,7 @@ class move_t
 class move_list_t
 {
   public:
-    static const size_t max_moves = 256;
+    static constexpr size_t max_moves = 256;
     void                add(move_t m);
 };
 
@@ -42,37 +40,35 @@ void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list)
     const bitboard_t     pawns             = pos->pieces_bb(c, PAWN);
     const bitboard_t     ep_bb =
         (state->ep_square == NO_SQUARE ? bb::empty : bb::sq_mask(state->ep_square));
-    // straight one
-    if constexpr (mt != CAPTURE)
+    // straight one / two
     {
         bitboard_t single_push = bb::shift<up>(pawns & ~bb_promotion_rank) & available;
         bitboard_t double_push = bb::shift<up>(single_push & bb_third_rank) & available;
         while (single_push)
         {
-            square_t sq = square_t(pop_lsb(single_push));
-            list->add(move_t(sq - up, sq));
+            const auto sq = static_cast<square_t>(pop_lsb(single_push));
+            list->add(move_t(static_cast<square_t>(sq - up), sq));
         }
         while (double_push)
         {
-            square_t sq = square_t(pop_lsb(double_push));
-            list->add(move_t(sq - 2 * up, sq));
+            const auto sq = static_cast<square_t>(pop_lsb(double_push));
+            list->add(move_t(static_cast<square_t>(sq - 2 * up), sq));
         }
     }
-    bitboard_t promotion = pawns & bb_promotion_rank;
-    if (promotion)
+    if (bitboard_t promotions = pawns & bb_promotion_rank)
     {
     }
-    if constexpr (mt & CAPTURE)
+    // captures
     {
-        bitboard_t remaining  = pawns;
-        bitboard_t capturable = enemy | ep_bb;
+        bitboard_t       remaining  = pawns;
+        const bitboard_t capturable = enemy | ep_bb;
         while (remaining)
         {
-            square_t   from    = square_t(pop_lsb(remaining));
+            const square_t   from    = static_cast<square_t>(pop_lsb(remaining));
             bitboard_t attacks = (bb::attacks<PAWN>(from, enemy, c)) & capturable;
             while (attacks)
             {
-                square_t to = square_t(pop_lsb(attacks));
+                const square_t to = static_cast<square_t>(pop_lsb(attacks));
                 list->add(move_t(from, to));
             }
         }

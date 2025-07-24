@@ -43,16 +43,19 @@ namespace Bitboard
     constexpr bitboard_t corners = sq_mask(A1) | sq_mask(A8) | sq_mask(H1) | sq_mask(H8);
 
     extern all_squares<all_squares<bitboard_t>> from_to;
-    extern all_squares<all_squares<bitboard_t>> line;
+    extern all_squares<all_squares<bitboard_t>> lines;
 
     inline bitboard_t from_to_incl(const square_t from, const square_t to)
     {
-        const bitboard_t res = from_to.at(from).at(to);
-        return res;
+        return from_to.at(from).at(to);
     }
     inline bitboard_t from_to_excl(const square_t from, const square_t to)
     {
         return from_to_incl(from, to) & ~sq_mask(from) & ~sq_mask(to);
+    }
+    inline bitboard_t line(const square_t from, const square_t to)
+    {
+        return lines.at(from).at(to);
     }
 
     template <direction_t dir>
@@ -123,9 +126,6 @@ namespace Bitboard
         }
     }
 
-    // computes the bitboard corresponding to a sliding attack from sqare sq in the directions of
-    // the piece. Sliding attacks stop at (and including) the first blocker but do not include the
-    // startig square
     template <piece_type_t pc>
     constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, int len = 7)
     {
@@ -146,7 +146,6 @@ namespace Bitboard
     }
 
     void init();
-
     std::string string(bitboard_t bb);
 } // namespace Bitboard
 namespace bb = Bitboard;
@@ -157,7 +156,7 @@ struct magic_val_t
     uint64_t    shift;
     bitboard_t  magic;
     std::size_t offset;
-    bitboard_t  index(const bitboard_t blockers) const
+    [[nodiscard]] bitboard_t  index(const bitboard_t blockers) const
     {
         return offset + (((blockers & mask) * magic) >> shift);
     }
@@ -170,7 +169,7 @@ struct magics_t
     static constexpr std::size_t attacks_sz = compute_magic_sz();
 
     magics_t();
-    bitboard_t attack(const square_t sq, const bitboard_t occupancy) const;
+    [[nodiscard]] bitboard_t attack(square_t sq, bitboard_t occupancy) const;
 
     all_squares<magic_val_t>           magic_vals = {};
     std::array<bitboard_t, attacks_sz> attacks    = {};
@@ -205,7 +204,7 @@ template <piece_type_t pc>
 constexpr size_t magics_t<pc>::compute_magic_sz()
 {
     size_t ret = 0;
-    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    for (square_t sq = A1; sq < NB_SQUARES; sq = static_cast<square_t>(sq + 1))
     {
         ret += 1ULL << (popcount(relevancy_mask<pc>(sq)));
     }

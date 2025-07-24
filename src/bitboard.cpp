@@ -1,11 +1,13 @@
 #include "bitboard.h"
 #include "cstring"
+
+#include <random>
 #include <sstream>
 
 using namespace Bitboard;
 
 all_squares<all_squares<bitboard_t>>     bb::from_to{};
-all_squares<all_squares<bitboard_t>>     bb::line{};
+all_squares<all_squares<bitboard_t>>     bb::lines{};
 all_piece_types<all_squares<bitboard_t>> bb::piece_pseudo_attacks{};
 all_colors<all_squares<bitboard_t>>      bb::pawn_pseudo_attacks{};
 template <>
@@ -15,26 +17,24 @@ magics_t<ROOK> magics<ROOK>;
 
 void init_from_to()
 {
-    for (square_t sq1 = A1; sq1 < NB_SQUARES; ++sq1)
+    for (square_t sq1 = A1; sq1 < NB_SQUARES; sq1 = static_cast<square_t>(sq1 + 1))
     {
-        for (square_t sq2 = A1; sq2 < NB_SQUARES; ++sq2)
+        for (square_t sq2 = A1; sq2 < NB_SQUARES; sq2 = static_cast<square_t>(sq2 + 1))
         {
-            const int df = fl_of(sq2) - fl_of(sq1);
-            const int dr = rk_of(sq2) - rk_of(sq1);
-            if (dr == 0) // same file
+
+            if (attacks<ROOK>(sq1) & sq_mask(sq2))
             {
-                from_to.at(sq1).at(sq2) = ray<EAST>(sq1, 0, df);
-            }
-            if (df == 0) // same rank
-            {
-                from_to.at(sq1).at(sq2) = ray<NORTH>(sq1, 0, dr);
-            }
-            if (df == dr) // diagonal
-            {
+                lines.at(sq1).at(sq2) = attacks<ROOK>(sq1) & attacks<ROOK>(sq2);
                 from_to.at(sq1).at(sq2) =
-                    dr < 0 ? (df < 0 ? ray<SOUTH_WEST>(sq1, 0, -df) : ray<SOUTH_EAST>(sq1, 0, df))
-                           : (df < 0 ? ray<NORTH_WEST>(sq1, 0, -df) : ray<NORTH_EAST>(sq1, 0, df));
+                    attacks<ROOK>(sq1, sq_mask(sq2)) & attacks<ROOK>(sq2, sq_mask(sq1));
             }
+            if (attacks<BISHOP>(sq1) & sq_mask(sq2))
+            {
+                lines.at(sq1).at(sq2) = attacks<BISHOP>(sq1) & attacks<BISHOP>(sq2);
+                from_to.at(sq1).at(sq2) =
+                    attacks<BISHOP>(sq1, sq_mask(sq2)) & attacks<BISHOP>(sq2, sq_mask(sq1));
+            }
+            lines.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
             from_to.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
         }
     }
@@ -42,20 +42,20 @@ void init_from_to()
 
 void init_pseudo_attacks()
 {
-    for (square_t sq = A1; sq < NB_SQUARES; ++sq)
+    for (square_t sq = A1; sq < NB_SQUARES; sq = static_cast<square_t>(sq + 1))
     {
-        const bitboard_t bb                      = bb::sq_mask(sq);
-        bb::pawn_pseudo_attacks.at(WHITE).at(sq) = shift<NORTH_WEST>(bb) | shift<NORTH_EAST>(bb);
-        bb::pawn_pseudo_attacks.at(BLACK).at(sq) = shift<SOUTH_WEST>(bb) | shift<SOUTH_EAST>(bb);
-        bb::piece_pseudo_attacks.at(KNIGHT).at(sq) =
+        const bitboard_t bb                      = sq_mask(sq);
+        pawn_pseudo_attacks.at(WHITE).at(sq) = shift<NORTH_WEST>(bb) | shift<NORTH_EAST>(bb);
+        pawn_pseudo_attacks.at(BLACK).at(sq) = shift<SOUTH_WEST>(bb) | shift<SOUTH_EAST>(bb);
+        piece_pseudo_attacks.at(KNIGHT).at(sq) =
             shift<NORTH, NORTH, EAST>(bb) | shift<NORTH, NORTH, WEST>(bb) |
             shift<SOUTH, SOUTH, EAST>(bb) | shift<SOUTH, SOUTH, WEST>(bb) |
             shift<EAST, EAST, NORTH>(bb) | shift<EAST, EAST, SOUTH>(bb) |
             shift<WEST, WEST, NORTH>(bb) | shift<WEST, WEST, SOUTH>(bb);
-        bb::piece_pseudo_attacks.at(BISHOP).at(sq) = ray<BISHOP>(sq);
-        bb::piece_pseudo_attacks.at(ROOK).at(sq)   = ray<ROOK>(sq);
-        bb::piece_pseudo_attacks.at(QUEEN).at(sq)  = ray<BISHOP>(sq) | ray<ROOK>(sq);
-        bb::piece_pseudo_attacks.at(KING).at(sq)   = shift<NORTH>(bb) | shift<SOUTH>(bb) |
+        piece_pseudo_attacks.at(BISHOP).at(sq) = ray<BISHOP>(sq);
+        piece_pseudo_attacks.at(ROOK).at(sq)   = ray<ROOK>(sq);
+        piece_pseudo_attacks.at(QUEEN).at(sq)  = ray<BISHOP>(sq) | ray<ROOK>(sq);
+        piece_pseudo_attacks.at(KING).at(sq)   = shift<NORTH>(bb) | shift<SOUTH>(bb) |
                                                    shift<EAST>(bb) | shift<WEST>(bb) |
                                                    shift<NORTH, EAST>(bb) | shift<NORTH, WEST>(bb) |
                                                    shift<SOUTH, EAST>(bb) | shift<SOUTH, WEST>(bb);
@@ -65,10 +65,14 @@ void init_pseudo_attacks()
 void Bitboard::init()
 {
     init_pseudo_attacks();
+    init_from_to();
 }
 static uint64_t random_u64()
 {
-    return rand() + (((uint64_t)rand()) << 32);
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    return dist(gen);
 }
 static uint64_t random_magic()
 {
@@ -79,13 +83,13 @@ static bitboard_t mask_nb(const bitboard_t mask, const uint64_t n)
 {
     bitboard_t bb  = 0;
     int        idx = 0;
-    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    for (square_t sq = A1; sq < NB_SQUARES; sq = static_cast<square_t>(sq + 1))
     {
-        if (bb::sq_mask(sq) & mask)
+        if (sq_mask(sq) & mask)
         {
             if (1 << idx & n)
             {
-                bb |= bb::sq_mask(sq);
+                bb |= sq_mask(sq);
             }
             idx++;
         }
@@ -103,12 +107,12 @@ magics_t<pc>::magics_t()
     constexpr uint64_t MAX_TRIES = UINT64_MAX;
     constexpr uint64_t MAX_COMB  = 4096;
 
-    std::array<bitboard_t, MAX_COMB> blockers;
-    std::array<bitboard_t, MAX_COMB> attacks;
+    std::array<bitboard_t, MAX_COMB> cached_blockers{};
+    std::array<bitboard_t, MAX_COMB> cached_attacks{};
 
     size_t offset = 0;
 
-    for (square_t sq = A1; sq < NB_SQUARES; ++sq)
+    for (square_t sq = A1; sq < NB_SQUARES; sq = static_cast<square_t>(sq + 1))
     {
         const bitboard_t mask         = relevancy_mask<pc>(sq);
         const int        nb_ones      = popcount(mask);
@@ -120,8 +124,8 @@ magics_t<pc>::magics_t()
 
         for (uint64_t comb = 0; comb < combinations; comb++)
         {
-            blockers.at(comb) = mask_nb(mask, comb);
-            attacks.at(comb)  = bb::ray<pc>(sq, blockers.at(comb));
+            cached_blockers.at(comb) = mask_nb(mask, comb);
+            cached_attacks.at(comb)  = bb::ray<pc>(sq, cached_blockers.at(comb));
         }
 
         for (uint64_t tries = 1;; tries++)
@@ -133,16 +137,16 @@ magics_t<pc>::magics_t()
 
             for (uint64_t c = 0; c < combinations; c++)
             {
-                const size_t     index = (blockers.at(c) * magic) >> shift;
-                const bitboard_t cur   = this->attacks.at(offset + index);
+                const size_t     index = (cached_blockers.at(c) * magic) >> shift;
 
-                if (tries_map.at(index) && (cur != attacks.at(c)))
+                if (const bitboard_t cur = attacks.at(offset + index);
+                    tries_map.at(index) && (cur != cached_attacks.at(c)))
                 {
                     fail = true;
                     break;
                 }
 
-                this->attacks.at(offset + index) = attacks.at(c);
+                attacks.at(offset + index) = cached_attacks.at(c);
                 tries_map.at(index)              = true;
             }
 
@@ -166,16 +170,16 @@ magics_t<pc>::magics_t()
     }
 }
 
-std::string Bitboard::string(bitboard_t bb)
+std::string Bitboard::string(const bitboard_t bb)
 {
     std::ostringstream out;
     out << "__________________\n";
-    for (rank_t rank = RANK_1; rank <= RANK_8; ++rank)
+    for (rank_t rank = RANK_1; rank <= RANK_8; rank = static_cast<rank_t>(rank + 1))
     {
         out << "|";
-        for (file_t file = FILE_A; file <= FILE_H; ++file)
+        for (file_t file = FILE_A; file <= FILE_H; file = static_cast<file_t>(file + 1))
         {
-            out << ((bb & sq_mask((square_t)((NB_RANKS - rank - 1) * 8 + file))) ? "X " : ". ");
+            out << ((bb & sq_mask(static_cast<square_t>((NB_RANKS - rank - 1) * 8 + file))) ? "X " : ". ");
         }
         out << "|\n";
     }

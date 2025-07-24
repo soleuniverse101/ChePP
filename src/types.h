@@ -2,56 +2,7 @@
 #define TYPES_H_INCLUDED
 #include <array>
 #include <cassert>
-#include <stdint.h>
-
-#define ENUM_INCR_OP(T)                                                                            \
-    constexpr T& operator++(T& e)                                                                  \
-    {                                                                                              \
-        return e = T(static_cast<int>(e) + 1);                                                     \
-    }                                                                                              \
-    constexpr T operator++(T& e, int)                                                              \
-    {                                                                                              \
-        T old = e;                                                                                 \
-        ++e;                                                                                       \
-        return old;                                                                                \
-    }                                                                                              \
-    constexpr T& operator--(T& e)                                                                  \
-    {                                                                                              \
-        return e = T(static_cast<int>(e) - 1);                                                     \
-    }                                                                                              \
-    constexpr T operator--(T& e, int)                                                              \
-    {                                                                                              \
-        T old = e;                                                                                 \
-        --e;                                                                                       \
-        return old;                                                                                \
-    }
-
-#define ENUM_ARITH_OP(T)                                                                           \
-    constexpr T operator+(T lhs, int rhs)                                                          \
-    {                                                                                              \
-        return T(static_cast<int>(lhs) + rhs);                                                     \
-    }                                                                                              \
-    constexpr T operator-(T lhs, int rhs)                                                          \
-    {                                                                                              \
-        return T(static_cast<int>(lhs) - rhs);                                                     \
-    }                                                                                              \
-    constexpr T operator*(T lhs, int rhs)                                                          \
-    {                                                                                              \
-        return T(static_cast<int>(lhs) * rhs);                                                     \
-    }                                                                                              \
-                                                                                                   \
-    constexpr T& operator+=(T& lhs, int rhs)                                                       \
-    {                                                                                              \
-        return lhs = T(static_cast<int>(lhs) + rhs);                                               \
-    }                                                                                              \
-    constexpr T& operator-=(T& lhs, int rhs)                                                       \
-    {                                                                                              \
-        return lhs = T(static_cast<int>(lhs) - rhs);                                               \
-    }                                                                                              \
-    constexpr T& operator*=(T& lhs, int rhs)                                                       \
-    {                                                                                              \
-        return lhs = T(static_cast<int>(lhs) * rhs);                                               \
-    }
+#include <cstdint>
 
 using bitboard_t = uint64_t;
 
@@ -68,11 +19,6 @@ enum square_t : int8_t {
   A8, B8, C8, D8, E8, F8, G8, H8,
   NB_SQUARES
 };
-ENUM_INCR_OP(square_t)
-ENUM_ARITH_OP(square_t)
-constexpr bool is_ok(square_t sq) {
-  return (sq >= A1 && sq <= H8);
-}
 
 template <typename T>
 using all_squares = std::array<T, NB_SQUARES>;
@@ -90,12 +36,7 @@ enum file_t : int8_t
     FILE_H,
     NB_FILES
 };
-ENUM_INCR_OP(file_t)
-ENUM_ARITH_OP(file_t)
-constexpr bool is_ok(const file_t fl)
-{
-    return (fl >= FILE_A && fl <= FILE_H);
-}
+
 constexpr file_t fl_of(const square_t sq)
 {
     return static_cast<file_t>(static_cast<int8_t>(sq) & 7);
@@ -113,14 +54,6 @@ enum rank_t : int8_t
     RANK_8,
     NB_RANKS
 };
-
-ENUM_INCR_OP(rank_t)
-ENUM_ARITH_OP(rank_t)
-
-constexpr bool is_ok(rank_t rk)
-{
-    return (rk >= RANK_1 && rk <= RANK_8);
-}
 
 constexpr rank_t rk_of(const square_t sq)
 {
@@ -149,6 +82,16 @@ typedef enum color_t : int8_t
     NB_COLORS = 3,
     ANY
 } color_t;
+
+constexpr color_t operator!(const color_t c)
+{
+    assert(c == WHITE || c == BLACK);
+    return static_cast<color_t>(static_cast<int>(c) ^ 1);
+}
+constexpr color_t operator~(const color_t c)
+{
+    return !c;
+}
 
 template <typename T>
 using all_colors = std::array<T, NB_COLORS>;
@@ -189,13 +132,14 @@ enum direction_t : int8_t
 template <direction_t D>
 constexpr direction_t inverse_dir()
 {
+    static_assert(D != INVALID);
     return static_cast<direction_t>(-D);
 }
 
-constexpr direction_t direction_from(square_t a, square_t b)
+constexpr direction_t direction_from(const square_t a, const square_t b)
 {
-    int dr = rk_of(b) - rk_of(a);
-    int df = fl_of(b) - fl_of(a);
+    const int       dr = rk_of(b) - rk_of(a);
+    const int df = fl_of(b) - fl_of(a);
 
     if (dr == 0 && df > 0)
         return EAST;
@@ -217,16 +161,8 @@ constexpr direction_t direction_from(square_t a, square_t b)
     return INVALID;
 }
 
-constexpr color_t operator!(const color_t c)
-{
-    assert(c == WHITE || c == BLACK);
-    return color_t(int(c) ^ 1);
-}
-constexpr color_t operator~(const color_t c)
-{
-    assert(c == WHITE || c == BLACK);
-    return color_t(int(c) ^ 1);
-}
+
+
 template <std::unsigned_integral T>
 constexpr int popcount(const T x) noexcept
 {
