@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/ChePP.dir/src/bitboard.cpp.o CMakeFiles/ChePP.dir/src/main.cpp.o -o ChePP 

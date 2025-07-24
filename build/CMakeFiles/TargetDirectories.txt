@@ -1,3 +1,0 @@
-/home/paul/code/ChePP/build/CMakeFiles/ChePP.dir
-/home/paul/code/ChePP/build/CMakeFiles/edit_cache.dir
-/home/paul/code/ChePP/build/CMakeFiles/rebuild_cache.dir
