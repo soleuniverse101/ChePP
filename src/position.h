@@ -1,6 +1,6 @@
 #ifndef POSITION_H_INCLUDED
 #define POSITION_H_INCLUDED
-#include "magics.h"
+#include "bitboard.h"
 #include "types.h"
 
 
@@ -13,10 +13,10 @@
 // for the side whiose turn it is to play
 // for testing if there are pawns left
 namespace Zobrist {
-    key_t psq[NB_PIECE_TYPE][NB_SQUARES];
-    key_t enpassant[NB_FILES];
-    key_t castling[CASTLING_RIGHT_NB];
-    key_t side, noPawns;
+    hash_t psq[NB_PIECE_TYPE][NB_SQUARES];
+    hash_t enpassant[NB_FILES];
+    hash_t castling[CASTLING_RIGHT_NB];
+    hash_t side, noPawns;
 }
 
 

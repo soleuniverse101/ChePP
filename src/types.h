@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cstdint>
 
-using key_t      = uint64_t;
+using hash_t      = uint64_t;
 using bitboard_t = uint64_t;
 
 // clang-format off

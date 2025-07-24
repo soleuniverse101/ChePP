@@ -4,6 +4,8 @@
 #include "bitboard.h"
 #include "magics.h"
 #include "position.h"
+
+#include <memory>
 #include <system_error>
 
 
@@ -87,6 +89,7 @@ template <movegen_type_t mt, color_t c>
 void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list)
 {
     constexpr direction_t up               = c == WHITE ? NORTH : SOUTH;
+    constexpr direction_t right             = c == WHITE ? EAST : WEST;
     constexpr bitboard_t  bb_last_rank     = c == WHITE ? bb::rk_mask(RANK_8) : bb::rk_mask(RANK_1);
     constexpr bitboard_t bb_promotion_rank = c == WHITE ? bb::rk_mask(RANK_7) : bb::rk_mask(RANK_2);
     constexpr bitboard_t bb_third_rank     = c == WHITE ? bb::rk_mask(RANK_3) : bb::rk_mask(RANK_5);
@@ -95,37 +98,70 @@ void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list)
     const bitboard_t     pawns             = pos->pieces_bb(c, PAWN);
     const bitboard_t     ep_bb =
         (state->ep_square == NO_SQUARE ? bb::empty : bb::sq_mask(state->ep_square));
-    // straight one
+    // straight
     {
         bitboard_t single_push = bb::shift<up>(pawns & ~bb_promotion_rank) & available;
         bitboard_t double_push = bb::shift<up>(single_push & bb_third_rank) & available;
         while (single_push)
         {
-            const square_t sq = static_cast<square_t>(pop_lsb(single_push));
-            list->add(move_t(static_cast<square_t>(sq - up), sq));
+            const auto sq = static_cast<square_t>(pop_lsb(single_push));
+            list->add(move_t::make<NORMAL>(static_cast<square_t>(sq - up), sq));
         }
         while (double_push)
         {
-            const square_t sq = static_cast<square_t>(pop_lsb(double_push));
-            list->add(move_t(static_cast<square_t>(sq - 2 * up), sq));
+            const auto sq = static_cast<square_t>(pop_lsb(double_push));
+            list->add(move_t::make<NORMAL>(static_cast<square_t>(sq - 2 * up), sq));
         }
     }
-    bitboard_t promotion = pawns & bb_promotion_rank;
-    if (promotion)
+    // promotion
+    if (const bitboard_t promotions = pawns & bb_promotion_rank)
     {
+        bitboard_t push = bb::shift<up>(promotions) & available;
+        while (push)
+        {
+            const auto sq = static_cast<square_t>(pop_lsb(push));
+            list->add(move_t::make<PROMOTION>(static_cast<square_t>(sq - up), sq));
+        }
+        bitboard_t  take_right = bb::shift<up + right>(promotions) & enemy;
+        while (take_right)
+        {
+            const auto sq = static_cast<square_t>(pop_lsb(take_right));
+            list->add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up  + right)), sq));
+        }
+        bitboard_t  take_left = bb::shift<up - right>(promotions) & enemy;
+        while (take_left)
+        {
+            const auto sq = static_cast<square_t>(pop_lsb(take_left));
+            list->add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up  - right)), sq));
+        }
     }
     //capture
     {
-        bitboard_t remaining  = pawns;
         bitboard_t capturable = enemy | ep_bb;
-        while (remaining)
+        bitboard_t  take_right = bb::shift<up + right>(pawns & ~bb_promotion_rank) & capturable;
+        while (take_right)
         {
-            const square_t   from    = static_cast<square_t>(pop_lsb(remaining));
-            bitboard_t attacks = (bb::attacks<PAWN>(from, enemy, c)) & capturable;
-            while (attacks)
+            if (const auto sq = static_cast<square_t>(pop_lsb(take_right)); sq == state->ep_square)
             {
-                const square_t to = static_cast<square_t>(pop_lsb(attacks));
-                list->add(move_t(from, to));
+                list->add(move_t::make<EN_PASSANT>(static_cast<square_t>(sq - (up  + right)), sq));
+
+            } else
+            {
+                list->add(move_t::make<NORMAL>(static_cast<square_t>(sq - (up  + right)), sq));
+
+            }
+        }
+        bitboard_t  take_left = bb::shift<up - right>(pawns & ~bb_promotion_rank) & capturable;
+        while (take_left)
+        {
+            if (const auto sq = static_cast<square_t>(pop_lsb(take_left)); sq == state->ep_square)
+            {
+                list->add(move_t::make<EN_PASSANT>(static_cast<square_t>(sq - (up  - right)), sq));
+
+            } else
+            {
+                list->add(move_t::make<NORMAL>(static_cast<square_t>(sq - (up  - right)), sq));
+
             }
         }
     }

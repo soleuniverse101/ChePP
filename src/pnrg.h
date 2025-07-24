@@ -1,8 +1,10 @@
 #ifndef PNRG_H
 #define PNRG_H
 
+#include "types.h"
 
-// XOR shift algo, need to check xeeactly what it does, just use for now
+
+// XOR shift algo, need to check exactly what it does, just use for now
 // http://vigna.di.unimi.it/ftp/papers/xorshift.pdf
 class PRNG {
 
@@ -15,7 +17,7 @@ class PRNG {
     }
 
 public:
-    PRNG(uint64_t seed) :
+    explicit PRNG(const uint64_t seed) :
         s(seed) {
         assert(seed);
     }
