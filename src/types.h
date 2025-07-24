@@ -53,6 +53,7 @@
         return lhs = T(static_cast<int>(lhs) * rhs);                                               \
     }
 
+using key_t      = uint64_t;
 using bitboard_t = uint64_t;
 
 // clang-format off
@@ -246,5 +247,22 @@ constexpr int pop_lsb(T& bb) noexcept
     bb &= ~(static_cast<T>(1) << n);
     return n;
 }
+
+enum castling_rights_t : int8_t {
+    NO_CASTLING,
+    WHITE_OO,
+    WHITE_OOO = WHITE_OO << 1,
+    BLACK_OO  = WHITE_OO << 2,
+    BLACK_OOO = WHITE_OO << 3,
+
+    KING_SIDE      = WHITE_OO | BLACK_OO,
+    QUEEN_SIDE     = WHITE_OOO | BLACK_OOO,
+    WHITE_CASTLING = WHITE_OO | WHITE_OOO,
+    BLACK_CASTLING = BLACK_OO | BLACK_OOO,
+    ANY_CASTLING   = WHITE_CASTLING | BLACK_CASTLING,
+
+    CASTLING_RIGHT_NB = 16
+};
+
 
 #endif

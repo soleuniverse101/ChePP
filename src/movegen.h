@@ -6,6 +6,8 @@
 #include "position.h"
 #include <system_error>
 
+
+
 typedef enum movegen_type_t : int8_t
 {
     QUIET,
