@@ -183,8 +183,39 @@ enum direction_t : int8_t
     SOUTH_WEST = SOUTH + WEST,
     NORTH_EAST = NORTH + EAST,
     NORTH_WEST = NORTH + WEST,
-    NB_DIRECTIONS
+    NB_DIRECTIONS,
+    INVALID = 0
 };
+template <direction_t D>
+constexpr direction_t inverse_dir()
+{
+    return static_cast<direction_t>(-D);
+}
+
+constexpr direction_t direction_from(square_t a, square_t b)
+{
+    int dr = rk_of(b) - rk_of(a);
+    int df = fl_of(b) - fl_of(a);
+
+    if (dr == 0 && df > 0)
+        return EAST;
+    if (dr == 0 && df < 0)
+        return WEST;
+    if (df == 0 && dr > 0)
+        return NORTH;
+    if (df == 0 && dr < 0)
+        return SOUTH;
+    if (dr == df && dr > 0)
+        return SOUTH_EAST;
+    if (dr == df && dr < 0)
+        return SOUTH_WEST;
+    if (dr == -df && dr > 0)
+        return NORTH_WEST;
+    if (dr == -df && dr < 0)
+        return SOUTH_EAST;
+
+    return INVALID;
+}
 
 constexpr color_t operator!(const color_t c)
 {

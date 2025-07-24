@@ -4,7 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstdlib>
-#include <iostream>
+#include <string>
 
 namespace Bitboard
 {
@@ -43,6 +43,7 @@ namespace Bitboard
     constexpr bitboard_t corners = sq_mask(A1) | sq_mask(A8) | sq_mask(H1) | sq_mask(H8);
 
     extern all_squares<all_squares<bitboard_t>> from_to;
+    extern all_squares<all_squares<bitboard_t>> line;
 
     inline bitboard_t from_to_incl(const square_t from, const square_t to)
     {
@@ -51,7 +52,7 @@ namespace Bitboard
     }
     inline bitboard_t from_to_excl(const square_t from, const square_t to)
     {
-        return from_to_excl(from, to) & ~sq_mask(from) & ~sq_mask(to);
+        return from_to_incl(from, to) & ~sq_mask(from) & ~sq_mask(to);
     }
 
     template <direction_t dir>
@@ -93,16 +94,21 @@ namespace Bitboard
     }
 
     template <direction_t... Dirs>
-    constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, unsigned int len = 7)
+    constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, int len = 7)
     {
         len = len > 7 ? 7 : len;
+
+        if (len < 0)
+        {
+            return ray<inverse_dir<Dirs>()...>(sq, blockers, -len);
+        }
 
         if constexpr (sizeof...(Dirs) == 1)
         {
             constexpr direction_t Dir     = std::get<0>(std::tuple{Dirs...});
             bitboard_t            attacks = 0;
             bitboard_t            bb      = shift<Dir>(sq_mask(sq));
-            for (unsigned int i = 0; i < len && bb; ++i)
+            for (int i = 0; i < len && bb; ++i)
             {
                 attacks |= bb;
                 if (bb & blockers)
@@ -116,11 +122,12 @@ namespace Bitboard
             return (ray<Dirs>(sq, blockers, len) | ...);
         }
     }
+
     // computes the bitboard corresponding to a sliding attack from sqare sq in the directions of
     // the piece. Sliding attacks stop at (and including) the first blocker but do not include the
     // startig square
     template <piece_type_t pc>
-    constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, unsigned int len = 7)
+    constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, int len = 7)
     {
         static_assert(pc == BISHOP || pc == ROOK);
         len = len > 7 ? 7 : len;
@@ -138,9 +145,97 @@ namespace Bitboard
         return (pc == PAWN) ? pawn_pseudo_attacks.at(c).at(sq) : piece_pseudo_attacks.at(pc).at(sq);
     }
 
-    void        init();
+    void init();
+
     std::string string(bitboard_t bb);
 } // namespace Bitboard
 namespace bb = Bitboard;
 
+struct magic_val_t
+{
+    bitboard_t  mask;
+    uint64_t    shift;
+    bitboard_t  magic;
+    std::size_t offset;
+    bitboard_t  index(const bitboard_t blockers) const
+    {
+        return offset + (((blockers & mask) * magic) >> shift);
+    }
+};
+
+template <piece_type_t pc>
+struct magics_t
+{
+    static constexpr std::size_t compute_magic_sz();
+    static constexpr std::size_t attacks_sz = compute_magic_sz();
+
+    magics_t();
+    bitboard_t attack(const square_t sq, const bitboard_t occupancy) const;
+
+    all_squares<magic_val_t>           magic_vals = {};
+    std::array<bitboard_t, attacks_sz> attacks    = {};
+};
+
+template <piece_type_t pc>
+constexpr bitboard_t relevancy_mask(const square_t sq)
+{
+    bitboard_t mask = ~bb::sides;
+    if (pc == ROOK)
+    {
+        if (rk_of(sq) == RANK_1 || rk_of(sq) == RANK_8)
+        {
+            mask |= bb::rk_mask(sq);
+        }
+        if (fl_of(sq) == FILE_A || fl_of(sq) == FILE_H)
+        {
+            mask |= bb::fl_mask(sq);
+        }
+        mask &= ~bb::corners;
+    }
+    return bb::ray<pc>(sq) & mask;
+}
+
+template <piece_type_t pc>
+bitboard_t magics_t<pc>::attack(const square_t sq, const bitboard_t occupancy) const
+{
+    return attacks.at(magic_vals.at(sq).index(occupancy));
+}
+
+template <piece_type_t pc>
+constexpr size_t magics_t<pc>::compute_magic_sz()
+{
+    size_t ret = 0;
+    for (square_t sq = A1; sq < NB_SQUARES; sq++)
+    {
+        ret += 1ULL << (popcount(relevancy_mask<pc>(sq)));
+    }
+    return ret;
+}
+
+template struct magics_t<ROOK>;
+template struct magics_t<BISHOP>;
+
+template <piece_type_t pc>
+extern magics_t<pc> magics;
+
+namespace Bitboard
+{
+    template <piece_type_t pc>
+    constexpr bitboard_t attacks(const square_t sq, const bitboard_t occupancy = empty,
+                                 const color_t c = WHITE)
+    {
+        if constexpr (pc == ROOK || pc == BISHOP)
+        {
+            return magics<pc>.attack(sq, occupancy);
+        }
+        else if constexpr (pc == QUEEN)
+        {
+            return attacks<BISHOP>(sq, occupancy, c) | attacks<ROOK>(sq, occupancy, c);
+        }
+        else
+        {
+            return pseudo_attack<pc>(sq, c);
+        }
+    }
+} // namespace Bitboard
 #endif
