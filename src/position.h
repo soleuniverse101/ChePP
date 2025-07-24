@@ -1,14 +1,31 @@
 #ifndef POSITION_H_INCLUDED
 #define POSITION_H_INCLUDED
-#include "bitboard.h"
+#include "magics.h"
+#include "types.h"
+
+
+
+
+// the keys used for the Zobrist hash
+// need some for all (piece type, square) couple
+// for en passant (one of reach file)
+// fo rthe castling rights
+// for the side whiose turn it is to play
+// for testing if there are pawns left
+namespace Zobrist {
+    key_t psq[NB_PIECE_TYPE][NB_SQUARES];
+    key_t enpassant[NB_FILES];
+    key_t castling[CASTLING_RIGHT_NB];
+    key_t side, noPawns;
+}
+
+
+
 
 class state_t
 {
   public:
     state_t* previous;
-    bitboard_t checkers;
-    bitboard_t attackers;
-    bitboard_t blockers;
     square_t ep_square;
 };
 
@@ -47,12 +64,12 @@ bitboard_t position_t::pieces_bb(const piece_type_t first, const pieces... rest)
 }
 inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
 {
-    return (bb::attacks<QUEEN>(sq, global_occupancy) & pieces_bb(QUEEN)) |
-           (bb::attacks<ROOK>(sq, global_occupancy) & pieces_bb(ROOK)) |
-           (bb::attacks<BISHOP>(sq, global_occupancy) & pieces_bb(BISHOP)) |
-           (bb::attacks<KNIGHT>(sq, global_occupancy) & pieces_bb(KNIGHT)) |
-           (bb::attacks<PAWN>(sq, global_occupancy, WHITE) & pieces_bb(WHITE, PAWN)) |
-           (bb::attacks<PAWN>(sq, global_occupancy, BLACK) & pieces_bb(BLACK, PAWN)) |
-           (bb::attacks<KING>(sq, global_occupancy) & pieces_bb(KING));
+    return bb::attacks<QUEEN>(sq, global_occupancy) & pieces_bb(QUEEN) |
+           bb::attacks<ROOK>(sq, global_occupancy) & pieces_bb(ROOK) |
+           bb::attacks<BISHOP>(sq, global_occupancy) & pieces_bb(BISHOP) |
+           bb::attacks<KNIGHT>(sq, global_occupancy) & pieces_bb(KNIGHT) |
+           bb::attacks<PAWN>(sq, global_occupancy, WHITE) & pieces_bb(WHITE, PAWN) |
+           bb::attacks<PAWN>(sq, global_occupancy, BLACK) & pieces_bb(BLACK, PAWN) |
+           bb::attacks<KING>(sq, global_occupancy) & pieces_bb(KING);
 }
 #endif
