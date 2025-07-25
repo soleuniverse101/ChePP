@@ -80,6 +80,8 @@ bitboard_t position_t::pieces_bb(const piece_type_t first, const pieces... rest)
 }
 inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
 {
+    // if a piece attacks a square sq2 from a square sq1 it would attack sq1 from sq2
+    // exception made for pawns where this is true only with reversed colors
     return (bb::attacks<QUEEN>(sq, m_global_occupancy) & pieces_bb(QUEEN)) |
            (bb::attacks<ROOK>(sq, m_global_occupancy) & pieces_bb(ROOK)) |
            (bb::attacks<BISHOP>(sq, m_global_occupancy) & pieces_bb(BISHOP)) |
