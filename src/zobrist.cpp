@@ -42,9 +42,10 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     const color_t     color = pos.color();
     const direction_t up    = pos.color() == WHITE ? NORTH : SOUTH;
 
-    if (const int8_t lost = castling_rights_t::lost_by_moving_from(from)) [[unlikely]]
+    // are we losing castling rights
+    if (const int8_t lost = (castling_rights_t::lost_by_moving_from(from) & pos.crs().mask())) [[unlikely]]
     {
-        castling_rights(pos.crs().mask() & lost);
+        castling_rights(lost);
     }
     if (move.type_of() == CASTLING) [[unlikely]]
     {

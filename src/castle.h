@@ -70,7 +70,7 @@ public:
 
     // Remove all rights for a color
      void remove_color(const color_t c) {
-        m_rights = m_rights & ~(mask(type(c, KINGSIDE)) | mask(type(c, QUEENSIDE)));
+        m_rights &= ~(mask(type(c, KINGSIDE)) | mask(type(c, QUEENSIDE)));
     }
 
     // Remove all rights
