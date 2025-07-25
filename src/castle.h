@@ -15,13 +15,14 @@ enum castling_type_t : int8_t
     WHITE_OOO   = 1,
     BLACK_OO    = 2,
     BLACK_OOO   = 3,
+    NB_CASTLING_TYPES = 4,
     NO_CASTLING = -1
 };
 
 inline std::array castling_types{WHITE_OO, WHITE_OOO, BLACK_OO, BLACK_OOO};
 
 template <typename T>
-using all_castling_types = std::array<T, 16>;
+using all_castling_types = std::array<T, NB_CASTLING_TYPES>;
 
 
 
