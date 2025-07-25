@@ -10,10 +10,11 @@
 class state_t
 {
   public:
-    state_t*          m_previous;
+    state_t*          m_previous{};
     square_t          m_ep_square;
-    bitboard_t        m_checkers;
-    bitboard_t        m_blockers;
+    all_colors<bitboard_t>        m_checkers{};
+    all_colors<bitboard_t>        m_blockers{};
+    all_colors<bitboard_t>        m_check_mask{};
     castling_rights_t m_crs;
 };
 
@@ -51,10 +52,12 @@ class position_t
         }
         return m_color_occupancy.at(c);
     }
-    [[nodiscard]] bitboard_t        checkers() const { return m_state->m_checkers; }
-    [[nodiscard]] bitboard_t        blockers() const { return m_state->m_blockers; }
+    [[nodiscard]] bitboard_t        checkers(const color_t c) const { return m_state->m_checkers.at(c); }
+    [[nodiscard]] bitboard_t        blockers(const color_t c) const { return m_state->m_blockers.at(c); }
     [[nodiscard]] square_t          ep_square() const { return m_state->m_ep_square; }
     [[nodiscard]] castling_rights_t crs() const { return m_state->m_crs; }
+
+    void update_checkers(color_t c) const;
 };
 
 template <class... pieces>
@@ -85,4 +88,28 @@ inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
            (bb::attacks<PAWN>(sq, m_global_occupancy, BLACK) & pieces_bb(BLACK, PAWN)) |
            (bb::attacks<KING>(sq, m_global_occupancy) & pieces_bb(KING));
 }
+
+inline void position_t::update_checkers(const color_t c) const
+{
+    const auto ksq = static_cast<square_t>(get_lsb(pieces_bb(c, KING)));
+    m_state->m_check_mask.at(c) = m_state->m_check_mask.at(c) =m_state->m_checkers.at(c) = attacking_sq_bb(ksq) & color_occupancy(~c);
+    m_state->m_blockers.at(c) = bb::empty;
+    for (const auto piece : {BISHOP, ROOK, QUEEN})
+    {
+        auto enemies = pieces_bb(~c, piece);
+        while (enemies)
+        {
+            const auto sq      = static_cast<square_t>(pop_lsb(enemies));
+            if (const auto line = bb::from_to_excl(sq, ksq); popcount(line) == 1)
+            {
+                m_state->m_blockers.at(c) |= line & color_occupancy(ANY);
+                m_state->m_check_mask.at(c) |= line;
+            }
+        }
+    }
+
+}
+
+
+
 #endif

@@ -86,7 +86,7 @@ typedef enum color_t : int8_t
 {
     WHITE,
     BLACK,
-    NB_COLORS = 3,
+    NB_COLORS,
     ANY
 } color_t;
 

@@ -34,7 +34,12 @@ void zobrist_t::init(const std::uint64_t seed)
 void zobrist_t::play_move(const move_t move, const position_t& pos)
 {
     m_hash ^= s_side;                   // change color
-    m_hash ^= s_ep.at(pos.ep_square()); // reset old ep square
+    if (pos.ep_square())
+    {
+        // ep square should be set only if it is playable
+        // aka if a piece can play en passant
+        m_hash ^= s_ep.at(pos.ep_square()); // reset old ep square
+    }
 
     const square_t    from  = move.from_sq();
     const square_t    to    = move.to_sq();
@@ -42,6 +47,7 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     const piece_type_t pt = pos.piece_type_at(from);
     const color_t     color = pos.color();
     const direction_t up    = pos.color() == WHITE ? NORTH : SOUTH;
+    const direction_t right  = pos.color() == WHITE ? EAST : WEST;
 
     // are we losing castling rights?
     if (const int8_t lost = (castling_rights_t::lost_by_moving_from(from) & pos.crs().mask())) [[unlikely]]
