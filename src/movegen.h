@@ -7,19 +7,6 @@
 
 #include <memory>
 
-enum movegen_type_t : int8_t
-{
-    QUIET,
-    CAPTURE,
-    ESCAPE,
-    PSEUDO_LEGAL,
-    LEGAL
-} ;
-
-
-
-
-
 
 class move_list_t
 {
@@ -141,19 +128,22 @@ void gen_castling(const position_t& pos, move_list_t& list, const bitboard_t che
     {
         if (cr::mask(cr::type(c, side)) & crs.mask())
         {
-            auto [from, to] = cr::king_move(cr::type(c, side));
-            bitboard_t line = bb::from_to_incl(from, to);
+            auto [from, to]         = cr::king_move(cr::type(c, side));
+            const direction_t dir = direction_from(from, to);
+            assert(dir != INVALID);
             bool safe  = true;
-            while (line)
+            for (square_t sq = from; sq <= to; sq = static_cast<square_t>(sq + dir))
             {
-                if (const auto sq = static_cast<square_t>(pop_lsb(line)); pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
+                if (pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
                 {
                     safe = false;
                     break;
                 }
             }
-            if (!safe) continue;
-            list.add(move_t::make<CASTLING>(from, to, cr::type(c, side)));
+            if (safe)
+            {
+                list.add(move_t::make<CASTLING>(from, to, cr::type(c, side)));
+            }
         }
     }
 
