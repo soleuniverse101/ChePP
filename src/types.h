@@ -200,5 +200,19 @@ enum castling_rights_t : int8_t {
     CASTLING_RIGHT_NB = 16
 };
 
+template <color_t C>
+castling_rights_t castling_rights() noexcept
+{
+    if constexpr (C == WHITE)
+    {
+        return WHITE_CASTLING;
+    }
+    else
+    {
+        return BLACK_CASTLING;
+    }
+}
+
+
 
 #endif

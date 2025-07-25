@@ -87,18 +87,18 @@ class move_list_t
 
 
 template <color_t c>
-void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list, bitboard_t check_mask = bb::full)
+void gen_pawn_moves(position_t* pos, move_list_t* list, bitboard_t check_mask = bb::full)
 {
     //check mask refers to king attackers u rays of king attackers
     constexpr direction_t up               = c == WHITE ? NORTH : SOUTH;
     constexpr direction_t right             = c == WHITE ? EAST : WEST;
     constexpr bitboard_t bb_promotion_rank = c == WHITE ? bb::rk_mask(RANK_7) : bb::rk_mask(RANK_2);
     constexpr bitboard_t bb_third_rank     = c == WHITE ? bb::rk_mask(RANK_3) : bb::rk_mask(RANK_5);
-    const bitboard_t     available         = ~pos->global_occupancy;
-    const bitboard_t     enemy             = pos->color_occupancy[~c];
+    const bitboard_t     available         = ~pos->color_occupancy(ANY);
+    const bitboard_t     enemy             = pos->color_occupancy(~c);
     const bitboard_t     pawns             = pos->pieces_bb(c, PAWN);
     const bitboard_t     ep_bb =
-        (state->ep_square == NO_SQUARE ? bb::empty : bb::sq_mask(state->ep_square));
+        (pos->ep_square() == NO_SQUARE ? bb::empty : bb::sq_mask(pos->ep_square()));
     // straight
     {
         bitboard_t single_push = bb::shift<up>(pawns & ~bb_promotion_rank) & available;
@@ -143,7 +143,7 @@ void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list, bitboard
         bitboard_t  take_right = bb::shift<up + right>(pawns & ~bb_promotion_rank) & capturable & check_mask;
         while (take_right)
         {
-            if (const auto sq = static_cast<square_t>(pop_lsb(take_right)); sq == state->ep_square) [[unlikely]]
+            if (const auto sq = static_cast<square_t>(pop_lsb(take_right)); sq == pos->ep_square()) [[unlikely]]
             {
                 list->add(move_t::make<EN_PASSANT>(static_cast<square_t>(sq - (up  + right)), sq));
 
@@ -156,7 +156,7 @@ void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list, bitboard
         bitboard_t  take_left = bb::shift<up - right>(pawns & ~bb_promotion_rank) & capturable & check_mask;
         while (take_left)
         {
-            if (const auto sq = static_cast<square_t>(pop_lsb(take_left)); sq == state->ep_square) [[unlikely]]
+            if (const auto sq = static_cast<square_t>(pop_lsb(take_left)); sq == pos->ep_square()) [[unlikely]]
             {
                 list->add(move_t::make<EN_PASSANT>(static_cast<square_t>(sq - (up  - right)), sq));
 
@@ -171,18 +171,29 @@ void gen_pawn_moves(position_t* pos, state_t* state, move_list_t* list, bitboard
 
 
 template <piece_type_t pc, color_t c>
-void gen_pc_moves(position_t* pos, state_t* state, move_list_t* list, bitboard_t check_mask = bb::full)
+void gen_pc_moves(position_t* pos, move_list_t* list, bitboard_t check_mask = bb::full)
 {
-    bitboard_t bb = pos->pieces_occupancy.at(c).at(pc);
+    bitboard_t bb = pos->pieces_occupancy(c, pc);
     while (bb)
     {
         auto from = static_cast<square_t>(pop_lsb(bb));
-        bitboard_t attacks = bb::attacks<pc>(from, pos->global_occupancy) & ~pos->color_occupancy.at(c) & check_mask;
+        bitboard_t attacks = bb::attacks<pc>(from, pos->color_occupancy(ANY)) & ~pos->color_occupancy(c) & check_mask;
         while (attacks)
         {
             list->add(move_t::make<NORMAL>(from,static_cast<square_t>(pop_lsb(attacks))));
         }
     }
+}
+
+
+template <color_t c>
+void gen_castling(position_t* pos, bitboard_t check_mask = bb::full)
+{
+    if (check_mask != bb::full) return;
+    castling_rights_t crs = pos->crs() & castling_rights<c>();
+    if (crs == 0) return;
+
+
 }
 
 

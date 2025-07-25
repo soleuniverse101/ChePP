@@ -12,7 +12,7 @@ void position_t::init()  {
     // init the keys in the Zobrist namespace
     for (piece_type_t pc : Pieces)
         for (square_t s = SQ_A1; s <= SQ_H8; ++s)
-            Zobrist::psq[pc][s] = rng.rand<hash_t>();
+            Zobrist::psq[pc][sd] = rng.rand<hash_t>();
 
 
     for (file_t f = FILE_A; f <= FILE_H; ++f)
@@ -21,8 +21,8 @@ void position_t::init()  {
     for (int cr = NO_CASTLING; cr <= ANY_CASTLING; ++cr)
         Zobrist::castling[cr] = rng.rand<hash_t>();
 
-    Zobrist::side    = rng.rand<Key>();
-    Zobrist::noPawns = rng.rand<Key>();
+    Zobrist::side    = rng.rand<hash_t>();
+    Zobrist::noPawns = rng.rand<hash_t>();
 
     // some other hash were in the source code, but unclear use for now so to add in later
 }

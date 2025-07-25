@@ -25,36 +25,54 @@ namespace Zobrist {
 class state_t
 {
   public:
-    state_t* previous;
-    square_t ep_square;
+    state_t* m_previous;
+    square_t m_ep_square;
+    bitboard_t m_checkers;
+    bitboard_t m_blockers;
+    castling_rights_t m_crs;
 };
 
 class position_t
 {
   public:
-    all_colors<all_piece_types<bitboard_t>> pieces_occupancy;
-    all_colors<bitboard_t>                  color_occupancy;
-    bitboard_t                              global_occupancy;
-    state_t*                                state;
+    all_colors<all_piece_types<bitboard_t>> m_pieces_occupancy;
+    all_colors<bitboard_t>                  m_color_occupancy;
+    bitboard_t                              m_global_occupancy;
+    state_t*                                m_state;
 
-    template <typename... pieces>
-    bitboard_t pieces_bb(const color_t c, const piece_type_t first, const pieces... rest) const;
+
+    template <class... pieces>
+    bitboard_t pieces_bb(color_t c, piece_type_t first, const pieces... rest) const;
     template <typename... pieces>
     bitboard_t pieces_bb(const piece_type_t first, const pieces... rest) const;
     bitboard_t attacking_sq_bb(const square_t sq) const;
+
+    bitboard_t pieces_occupancy(const color_t c, const piece_type_t p) const { return m_pieces_occupancy.at(c).at(p);}
+    bitboard_t color_occupancy(const color_t c) const
+    {
+        if constexpr (c == ANY)
+        {
+            return m_global_occupancy;
+        }
+        return m_color_occupancy.at(c);
+    }
+    bitboard_t checkers() const { return m_state->m_checkers;}
+    bitboard_t blockers() const { return m_state->m_blockers;}
+    square_t ep_square() const { return m_state->m_ep_square;}
+    castling_rights_t crs() const { return m_state->m_crs;}
 };
 
-template <typename... pieces>
-bitboard_t position_t::pieces_bb(const color_t color, const piece_type_t first,
+template <class ... pieces>
+bitboard_t position_t::pieces_bb(const color_t c, const piece_type_t first,
                                  const pieces... rest) const
 {
     if constexpr (sizeof...(rest) == 0)
     {
-        return pieces_occupancy[color][first];
+        return pieces_occupancy[c][first];
     }
     else
     {
-        return pieces_occupancy[color][first] | get_pieces_bitboard(color, rest...);
+        return pieces_occupancy[c][first] | get_pieces_bitboard(c, rest...);
     }
 }
 template <typename... pieces>
