@@ -34,6 +34,17 @@ class position_t
     [[nodiscard]] piece_type_t piece_type_at(const square_t sq) const { return piece_type(m_pieces.at(sq)); }
     [[nodiscard]] bool is_occupied(const square_t sq) const { return m_global_occupancy & bb::sq_mask(sq); }
     [[nodiscard]] color_t color() const { return m_color; }
+
+    [[nodiscard]] direction_t up() const { return color() == WHITE ? NORTH : SOUTH; }
+    [[nodiscard]] direction_t down() const { return static_cast<direction_t>(-up()); }
+    [[nodiscard]] direction_t right() const { return color() == BLACK ? EAST : WEST; }
+    [[nodiscard]] direction_t left() const { return static_cast<direction_t>(-right()); }
+    [[nodiscard]] direction_t upright() const { return static_cast<direction_t>(up() + right()); }
+    [[nodiscard]] direction_t upleft() const { return static_cast<direction_t>(up() + left()); }
+    [[nodiscard]] direction_t downright() const { return static_cast<direction_t>(down() + right()); }
+    [[nodiscard]] direction_t downleft() const { return static_cast<direction_t>(down() + left()); }
+
+
     template <class... pieces>
     bitboard_t pieces_bb(color_t c, piece_type_t first, const pieces... rest) const;
     template <class... pieces>
