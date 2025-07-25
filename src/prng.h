@@ -1,5 +1,5 @@
-#ifndef PNRG_H
-#define PNRG_H
+#ifndef PRNG_H
+#define PRNG_H
 
 #include "types.h"
 
@@ -36,4 +36,4 @@ public:
 };
 
 
-#endif PNRG_H
+#endif

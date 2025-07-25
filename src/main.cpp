@@ -9,7 +9,7 @@ int main()
     std::cout << bb::string(bb::attacks<KNIGHT>(D5, bb::attacks<QUEEN>(D5, 0)));
     std::cout << bb::string(bb::attacks<PAWN>(H4, bb::attacks<QUEEN>(D5, 0)));
     std::cout << bb::string(bb::from_to_incl(B2, G7));
-    std::cout << bb::string(bb::lines.at(A1).at(C3));
+    std::cout << bb::string(bb::g_lines.at(A1).at(C3));
     constexpr int           iterations = 1'000'000;
     volatile bitboard_t     total      = 0;
 

@@ -6,14 +6,14 @@
 
 using namespace Bitboard;
 
-all_squares<all_squares<bitboard_t>>     bb::from_to{};
-all_squares<all_squares<bitboard_t>>     bb::lines{};
-all_piece_types<all_squares<bitboard_t>> bb::piece_pseudo_attacks{};
-all_colors<all_squares<bitboard_t>>      bb::pawn_pseudo_attacks{};
+all_squares<all_squares<bitboard_t>>     bb::g_from_to{};
+all_squares<all_squares<bitboard_t>>     bb::g_lines{};
+all_piece_types<all_squares<bitboard_t>> bb::g_piece_pseudo_attacks{};
+all_colors<all_squares<bitboard_t>>      bb::g_pawn_pseudo_attacks{};
 template <>
-magics_t<BISHOP> magics<BISHOP>;
+magics_t<BISHOP> g_magics<BISHOP>;
 template <>
-magics_t<ROOK> magics<ROOK>;
+magics_t<ROOK> g_magics<ROOK>;
 
 void init_from_to()
 {
@@ -24,18 +24,18 @@ void init_from_to()
 
             if (attacks<ROOK>(sq1) & sq_mask(sq2))
             {
-                lines.at(sq1).at(sq2) = attacks<ROOK>(sq1) & attacks<ROOK>(sq2);
-                from_to.at(sq1).at(sq2) =
+                g_lines.at(sq1).at(sq2) = attacks<ROOK>(sq1) & attacks<ROOK>(sq2);
+                g_from_to.at(sq1).at(sq2) =
                     attacks<ROOK>(sq1, sq_mask(sq2)) & attacks<ROOK>(sq2, sq_mask(sq1));
             }
             if (attacks<BISHOP>(sq1) & sq_mask(sq2))
             {
-                lines.at(sq1).at(sq2) = attacks<BISHOP>(sq1) & attacks<BISHOP>(sq2);
-                from_to.at(sq1).at(sq2) =
+                g_lines.at(sq1).at(sq2) = attacks<BISHOP>(sq1) & attacks<BISHOP>(sq2);
+                g_from_to.at(sq1).at(sq2) =
                     attacks<BISHOP>(sq1, sq_mask(sq2)) & attacks<BISHOP>(sq2, sq_mask(sq1));
             }
-            lines.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
-            from_to.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
+            g_lines.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
+            g_from_to.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
         }
     }
 }
@@ -45,17 +45,17 @@ void init_pseudo_attacks()
     for (square_t sq = A1; sq < NB_SQUARES; sq = static_cast<square_t>(sq + 1))
     {
         const bitboard_t bb                      = sq_mask(sq);
-        pawn_pseudo_attacks.at(WHITE).at(sq) = shift<NORTH_WEST>(bb) | shift<NORTH_EAST>(bb);
-        pawn_pseudo_attacks.at(BLACK).at(sq) = shift<SOUTH_WEST>(bb) | shift<SOUTH_EAST>(bb);
-        piece_pseudo_attacks.at(KNIGHT).at(sq) =
+        g_pawn_pseudo_attacks.at(WHITE).at(sq) = shift<NORTH_WEST>(bb) | shift<NORTH_EAST>(bb);
+        g_pawn_pseudo_attacks.at(BLACK).at(sq) = shift<SOUTH_WEST>(bb) | shift<SOUTH_EAST>(bb);
+        g_piece_pseudo_attacks.at(KNIGHT).at(sq) =
             shift<NORTH, NORTH, EAST>(bb) | shift<NORTH, NORTH, WEST>(bb) |
             shift<SOUTH, SOUTH, EAST>(bb) | shift<SOUTH, SOUTH, WEST>(bb) |
             shift<EAST, EAST, NORTH>(bb) | shift<EAST, EAST, SOUTH>(bb) |
             shift<WEST, WEST, NORTH>(bb) | shift<WEST, WEST, SOUTH>(bb);
-        piece_pseudo_attacks.at(BISHOP).at(sq) = ray<BISHOP>(sq);
-        piece_pseudo_attacks.at(ROOK).at(sq)   = ray<ROOK>(sq);
-        piece_pseudo_attacks.at(QUEEN).at(sq)  = ray<BISHOP>(sq) | ray<ROOK>(sq);
-        piece_pseudo_attacks.at(KING).at(sq)   = shift<NORTH>(bb) | shift<SOUTH>(bb) |
+        g_piece_pseudo_attacks.at(BISHOP).at(sq) = ray<BISHOP>(sq);
+        g_piece_pseudo_attacks.at(ROOK).at(sq)   = ray<ROOK>(sq);
+        g_piece_pseudo_attacks.at(QUEEN).at(sq)  = ray<BISHOP>(sq) | ray<ROOK>(sq);
+        g_piece_pseudo_attacks.at(KING).at(sq)   = shift<NORTH>(bb) | shift<SOUTH>(bb) |
                                                    shift<EAST>(bb) | shift<WEST>(bb) |
                                                    shift<NORTH, EAST>(bb) | shift<NORTH, WEST>(bb) |
                                                    shift<SOUTH, EAST>(bb) | shift<SOUTH, WEST>(bb);
@@ -161,10 +161,10 @@ magics_t<pc>::magics_t()
             }
         }
 
-        magics<pc>.magic_vals.at(sq).offset = offset;
-        magics<pc>.magic_vals.at(sq).magic  = magic;
-        magics<pc>.magic_vals.at(sq).mask   = mask;
-        magics<pc>.magic_vals.at(sq).shift  = shift;
+        g_magics<pc>.magic_vals.at(sq).offset = offset;
+        g_magics<pc>.magic_vals.at(sq).magic  = magic;
+        g_magics<pc>.magic_vals.at(sq).mask   = mask;
+        g_magics<pc>.magic_vals.at(sq).shift  = shift;
 
         offset += combinations;
     }

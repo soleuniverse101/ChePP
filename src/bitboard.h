@@ -42,12 +42,12 @@ namespace Bitboard
         fl_mask(FILE_A) | fl_mask(FILE_H) | rk_mask(RANK_1) | rk_mask(RANK_8);
     constexpr bitboard_t corners = sq_mask(A1) | sq_mask(A8) | sq_mask(H1) | sq_mask(H8);
 
-    extern all_squares<all_squares<bitboard_t>> from_to;
-    extern all_squares<all_squares<bitboard_t>> lines;
+    extern all_squares<all_squares<bitboard_t>> g_from_to;
+    extern all_squares<all_squares<bitboard_t>> g_lines;
 
     inline bitboard_t from_to_incl(const square_t from, const square_t to)
     {
-        return from_to.at(from).at(to);
+        return g_from_to.at(from).at(to);
     }
     inline bitboard_t from_to_excl(const square_t from, const square_t to)
     {
@@ -55,7 +55,7 @@ namespace Bitboard
     }
     inline bitboard_t line(const square_t from, const square_t to)
     {
-        return lines.at(from).at(to);
+        return g_lines.at(from).at(to);
     }
 
     template <direction_t dir>
@@ -135,14 +135,14 @@ namespace Bitboard
                             : ray<NORTH, SOUTH, EAST, WEST>(sq, blockers, len);
     }
 
-    extern all_piece_types<all_squares<bitboard_t>> piece_pseudo_attacks;
-    extern all_colors<all_squares<bitboard_t>>      pawn_pseudo_attacks;
+    extern all_piece_types<all_squares<bitboard_t>> g_piece_pseudo_attacks;
+    extern all_colors<all_squares<bitboard_t>>      g_pawn_pseudo_attacks;
 
     // Returns the base attack of a piece at a square sq. Base attacks assume an empty board
     template <piece_type_t pc>
     constexpr bitboard_t pseudo_attack(const square_t sq, const color_t c)
     {
-        return (pc == PAWN) ? pawn_pseudo_attacks.at(c).at(sq) : piece_pseudo_attacks.at(pc).at(sq);
+        return (pc == PAWN) ? g_pawn_pseudo_attacks.at(c).at(sq) : g_piece_pseudo_attacks.at(pc).at(sq);
     }
 
     void init();
@@ -215,7 +215,7 @@ template struct magics_t<ROOK>;
 template struct magics_t<BISHOP>;
 
 template <piece_type_t pc>
-extern magics_t<pc> magics;
+extern magics_t<pc> g_magics;
 
 namespace Bitboard
 {
@@ -225,7 +225,7 @@ namespace Bitboard
     {
         if constexpr (pc == ROOK || pc == BISHOP)
         {
-            return magics<pc>.attack(sq, occupancy);
+            return g_magics<pc>.attack(sq, occupancy);
         }
         else if constexpr (pc == QUEEN)
         {

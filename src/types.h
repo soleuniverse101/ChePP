@@ -4,8 +4,8 @@
 #include <cassert>
 #include <cstdint>
 
-using hash_t      = uint64_t;
-using bitboard_t = uint64_t;
+using hash_t      = std::uint64_t;
+using bitboard_t = std::uint64_t;
 
 // clang-format off
 enum square_t : int8_t {
@@ -38,6 +38,9 @@ enum file_t : int8_t
     NB_FILES
 };
 
+template <typename T>
+using all_files = std::array<T, NB_FILES>;
+
 constexpr file_t fl_of(const square_t sq)
 {
     return static_cast<file_t>(static_cast<int8_t>(sq) & 7);
@@ -55,6 +58,9 @@ enum rank_t : int8_t
     RANK_8,
     NB_RANKS
 };
+
+template <typename T>
+using all_ranks = std::array<T, NB_RANKS>;
 
 constexpr rank_t rk_of(const square_t sq)
 {
@@ -107,12 +113,30 @@ enum piece_t : int8_t
     W_QUEEN,
     W_KING,
     B_PAWN,
+    B_KNIGHT,
     B_BISHOP,
     B_ROOK,
     B_QUEEN,
     B_KING,
     NB_PIECES
 };
+
+constexpr piece_type_t piece_type(const piece_t pc)
+{
+    return static_cast<piece_type_t>(static_cast<int8_t>(pc) % NB_PIECE_TYPES);
+}
+
+constexpr color_t color(const color_t pc)
+{
+    return static_cast<color_t>(static_cast<int8_t>(pc) > NB_PIECE_TYPES);
+}
+
+constexpr piece_t piece(const piece_type_t pc, const color_t c)
+{
+    return static_cast<piece_t>(static_cast<int8_t>(pc)  + NB_PIECE_TYPES * static_cast<int8_t>(c));
+}
+
+constexpr piece_t p = piece(ROOK, WHITE);
 
 template <typename T>
 using all_pieces = std::array<T, NB_PIECES>;
@@ -199,6 +223,9 @@ enum castling_rights_t : int8_t {
 
     CASTLING_RIGHT_NB = 16
 };
+
+template <typename T>
+using all_castling_rights = std::array<T, CASTLING_RIGHT_NB>;
 
 template <color_t C>
 castling_rights_t castling_rights() noexcept
