@@ -92,8 +92,9 @@ inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
 inline void position_t::update_checkers(const color_t c) const
 {
     const auto ksq = static_cast<square_t>(get_lsb(pieces_bb(c, KING)));
-    //
-    m_state->m_check_mask.at(c) =m_state->m_checkers.at(c) = attacking_sq_bb(ksq) & color_occupancy(~c);
+    // set checkers
+    // check mask contains checkers that can be captures to resolve check
+    m_state->m_check_mask.at(c) = m_state->m_checkers.at(c) = attacking_sq_bb(ksq) & color_occupancy(~c);
     m_state->m_blockers.at(c) = bb::empty;
     for (const auto piece : {BISHOP, ROOK, QUEEN})
     {
@@ -103,7 +104,10 @@ inline void position_t::update_checkers(const color_t c) const
             const auto sq      = static_cast<square_t>(pop_lsb(enemies));
             if (const auto line = bb::from_to_excl(sq, ksq); popcount(line) == 1)
             {
+                // blockers can be of any color
+                // blocker from same color are pinned from other color can do a discovered check
                 m_state->m_blockers.at(c) |= line & color_occupancy(ANY);
+                // check mask also contains all squares between the long range attacker and the king
                 m_state->m_check_mask.at(c) |= line;
             }
         }
