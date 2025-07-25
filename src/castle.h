@@ -16,7 +16,7 @@ enum castling_type_t : int8_t
     BLACK_OO    = 2,
     BLACK_OOO   = 3,
     NB_CASTLING_TYPES = 4,
-    NO_CASTLING = -1
+    NO_CASTLING = 8
 };
 
 inline std::array castling_types{WHITE_OO, WHITE_OOO, BLACK_OO, BLACK_OOO};

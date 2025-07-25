@@ -42,20 +42,21 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     const color_t     color = pos.color();
     const direction_t up    = pos.color() == WHITE ? NORTH : SOUTH;
 
-    // are we losing castling rights
+    // are we losing castling rights?
     if (const int8_t lost = (castling_rights_t::lost_by_moving_from(from) & pos.crs().mask())) [[unlikely]]
     {
         castling_rights(lost);
     }
+    //are we castling?
     if (move.type_of() == CASTLING) [[unlikely]]
     {
-        const castling_type_t castling_type = move.castling_type();
+        const auto castling_type = move.castling_type();
         auto [k_from, k_to]                 = castling_rights_t::king_move(castling_type);
         auto [r_from, r_to]                 = castling_rights_t::rook_move(castling_type);
 
         move_piece(piece(KING, color), k_from, k_to);
         move_piece(piece(ROOK, color), r_from, r_to);
-        return;
+        return; //no capture, no promotion
     }
 
     move_piece(pc, from, to);
@@ -67,17 +68,19 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
             flip_piece(pos.piece_at(to), to);
         }
         // set new ep square
-        if (pc == PAWN && ((to - from) == (2 * up)))
+        else if (pc == PAWN && (to - from == (2 * up)))
         {
             m_hash ^= s_ep.at(rk_of(to));
         }
     }
     if (move.type_of() == EN_PASSANT) [[unlikely]]
     {
-        flip_piece(pos.piece_at(to), static_cast<square_t>(to + up)); // capture one up
+        // remove two up right / left
+        flip_piece(pos.piece_at(to), static_cast<square_t>(to + up));
     }
     if (move.type_of() == PROMOTION) [[unlikely]]
     {
+        //remove pawn add promoted type
         promote_piece(pos.color(), move.promotion_type(), move.to_sq());
     }
 }

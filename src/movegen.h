@@ -114,27 +114,48 @@ void gen_pawn_moves(const position_t& pos, move_list_t* list, bitboard_t check_m
 
 
 template <piece_type_t pc, color_t c>
-void gen_pc_moves(const position_t& pos, move_list_t* list, bitboard_t check_mask = bb::full)
+void gen_pc_moves(const position_t& pos, move_list_t& list, bitboard_t check_mask = bb::full)
 {
-    bitboard_t bb = pos->pieces_occupancy(c, pc);
+    bitboard_t bb = pos.pieces_occupancy(c, pc);
     while (bb)
     {
         auto from = static_cast<square_t>(pop_lsb(bb));
         bitboard_t attacks = bb::attacks<pc>(from, pos.color_occupancy(ANY)) & ~pos.color_occupancy(c) & check_mask;
         while (attacks)
         {
-            list->add(move_t::make<NORMAL>(from,static_cast<square_t>(pop_lsb(attacks))));
+            list.add(move_t::make<NORMAL>(from,static_cast<square_t>(pop_lsb(attacks))));
         }
     }
 }
 
 
 template <color_t c>
-void gen_castling(const position_t& pos, const bitboard_t check_mask = bb::full)
+void gen_castling(const position_t& pos, move_list_t& list, const bitboard_t check_mask = bb::full)
 {
-    if (check_mask != bb::full) return;
-    castling_rights_t crs = pos.crs() & castling_rights<c>();
-    if (crs == 0) return;
+    using cr = castling_rights_t;
+    if (check_mask != bb::full)
+        return;
+    const cr crs = pos.crs();
+    if (crs.mask() == 0) return;
+    for (const auto side : {KINGSIDE, QUEENSIDE})
+    {
+        if (cr::mask(cr::type(c, side)) & crs.mask())
+        {
+            auto [from, to] = cr::king_move(cr::type(c, side));
+            bitboard_t line = bb::from_to_incl(from, to);
+            bool safe  = true;
+            while (line)
+            {
+                if (const auto sq = static_cast<square_t>(pop_lsb(line)); pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
+                {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) continue;
+            list.add(move_t::make<CASTLING>(from, to, cr::type(c, side)));
+        }
+    }
 
 
 }
