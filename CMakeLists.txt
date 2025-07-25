@@ -10,6 +10,7 @@ file(GLOB SRC_FILES src/*.cpp)
 add_executable(ChePP ${SRC_FILES}
         src/move.h
         src/zobrist.h
-        src/zobrist.cpp)
+        src/zobrist.cpp
+        src/castle.h)
 set_property(TARGET ChePP PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 

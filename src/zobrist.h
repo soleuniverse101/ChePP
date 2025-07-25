@@ -1,9 +1,12 @@
 #ifndef ZOBRIST_H
 #define ZOBRIST_H
 
+#include "castle.h"
 #include "move.h"
 #include "prng.h"
 #include "types.h"
+
+#include <bits/ios_base.h>
 
 class position_t;
 
@@ -37,10 +40,17 @@ private:
         flip_piece(piece(PAWN, c), sq);
         flip_piece(piece(pt, c), sq);
     }
+    void castling_rights(const int8_t mask)
+    {
+        for (const auto t : castling_types)
+        {
+            if (mask & castling_rights_t::mask(t)) m_hash ^= s_castling.at(t);
+        }
+    }
 
     static all_pieces<all_squares<hash_t>> s_psq;
     static all_files<hash_t>                    s_ep;
-    static all_castling_rights<hash_t>          s_castling;
+    static all_castling_types<hash_t>          s_castling;
     static hash_t                               s_side, s_no_pawns;
     hash_t m_hash;
 };

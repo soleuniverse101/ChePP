@@ -208,38 +208,6 @@ constexpr int pop_lsb(T& bb) noexcept
     return n;
 }
 
-enum castling_rights_t : int8_t {
-    NO_CASTLING,
-    WHITE_OO,
-    WHITE_OOO = WHITE_OO << 1,
-    BLACK_OO  = WHITE_OO << 2,
-    BLACK_OOO = WHITE_OO << 3,
-
-    KING_SIDE      = WHITE_OO | BLACK_OO,
-    QUEEN_SIDE     = WHITE_OOO | BLACK_OOO,
-    WHITE_CASTLING = WHITE_OO | WHITE_OOO,
-    BLACK_CASTLING = BLACK_OO | BLACK_OOO,
-    ANY_CASTLING   = WHITE_CASTLING | BLACK_CASTLING,
-
-    CASTLING_RIGHT_NB = 16
-};
-
-template <typename T>
-using all_castling_rights = std::array<T, CASTLING_RIGHT_NB>;
-
-template <color_t C>
-castling_rights_t castling_rights() noexcept
-{
-    if constexpr (C == WHITE)
-    {
-        return WHITE_CASTLING;
-    }
-    else
-    {
-        return BLACK_CASTLING;
-    }
-}
-
 
 
 #endif

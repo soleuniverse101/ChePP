@@ -5,6 +5,7 @@
 #include "prng.h"
 #include "types.h"
 #include "zobrist.h"
+#include "castle.h"
 
 class state_t
 {
