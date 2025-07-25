@@ -92,7 +92,8 @@ inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
 inline void position_t::update_checkers(const color_t c) const
 {
     const auto ksq = static_cast<square_t>(get_lsb(pieces_bb(c, KING)));
-    m_state->m_check_mask.at(c) = m_state->m_check_mask.at(c) =m_state->m_checkers.at(c) = attacking_sq_bb(ksq) & color_occupancy(~c);
+    //
+    m_state->m_check_mask.at(c) =m_state->m_checkers.at(c) = attacking_sq_bb(ksq) & color_occupancy(~c);
     m_state->m_blockers.at(c) = bb::empty;
     for (const auto piece : {BISHOP, ROOK, QUEEN})
     {
