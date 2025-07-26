@@ -67,6 +67,11 @@ constexpr rank_t rk_of(const square_t sq)
     return static_cast<rank_t>(static_cast<int8_t>(sq) >> 3);
 }
 
+constexpr square_t square(const file_t f, const rank_t r)
+{
+    return static_cast<square_t>(f + r * 8);
+}
+
 typedef enum piece_type_t : int8_t
 {
     NO_PIECE_TYPE = -1,

@@ -12,7 +12,7 @@ AlignAfterOpenBracket: Align
 AlignOperands: true
 AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: true
-ColumnLimit: 100
+ColumnLimit: 120
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
 NamespaceIndentation: All

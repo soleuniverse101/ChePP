@@ -7,6 +7,9 @@
 
 #include "types.h"
 
+#include <sstream>
+#include <string>
+
 enum side_t : int8_t { KINGSIDE = 0, QUEENSIDE = 1 };
 
 enum castling_type_t : int8_t
@@ -19,7 +22,9 @@ enum castling_type_t : int8_t
     NO_CASTLING = 8
 };
 
-inline std::array castling_types{WHITE_OO, WHITE_OOO, BLACK_OO, BLACK_OOO};
+inline constexpr std::array<const castling_type_t, NB_CASTLING_TYPES> castling_types{WHITE_OO, WHITE_OOO, BLACK_OO, BLACK_OOO};
+inline constexpr std::array<const char, NB_CASTLING_TYPES> castling_strings{'K', 'Q', 'k', 'q'};
+
 
 template <typename T>
 using all_castling_types = std::array<T, NB_CASTLING_TYPES>;
@@ -28,13 +33,14 @@ using all_castling_types = std::array<T, NB_CASTLING_TYPES>;
 
 class castling_rights_t {
 public:
-    static constexpr int8_t WHITE_KINGSIDE  = 0b0001;
-    static constexpr int8_t WHITE_QUEENSIDE = 0b0010;
-    static constexpr int8_t BLACK_KINGSIDE  = 0b0100;
-    static constexpr int8_t BLACK_QUEENSIDE = 0b1000;
+    static constexpr uint8_t WHITE_KINGSIDE  = 0b0001;
+    static constexpr uint8_t WHITE_QUEENSIDE = 0b0010;
+    static constexpr uint8_t BLACK_KINGSIDE  = 0b0100;
+    static constexpr uint8_t BLACK_QUEENSIDE = 0b1000;
 
-    static constexpr int8_t ALL = WHITE_KINGSIDE | WHITE_QUEENSIDE |
+    static constexpr uint8_t ALL = WHITE_KINGSIDE | WHITE_QUEENSIDE |
                                    BLACK_KINGSIDE | BLACK_QUEENSIDE;
+
 
     struct rook_move_t {
         const square_t from;
@@ -47,12 +53,18 @@ public:
         const square_t to;
     };
 
+    explicit castling_rights_t(const uint8_t mask)
+    {
+        assert(mask <= ALL);
+        m_rights = mask;
+    }
+
     static constexpr castling_type_t type(const color_t c, const side_t s) {
         return static_cast< castling_type_t>(c * 2 + s);
     }
 
     // Get castling bitmask for a specific castling type
-    static constexpr int8_t mask(const castling_type_t type) {
+    static constexpr uint8_t mask(const castling_type_t type) {
         switch (type) {
             case WHITE_OO:   return WHITE_KINGSIDE;
             case WHITE_OOO:  return WHITE_QUEENSIDE;
@@ -76,6 +88,12 @@ public:
     // Remove all rights
      void clear_all() {
         m_rights = 0;
+    }
+
+    void add(const castling_type_t type)
+    {
+        assert(type < NB_CASTLING_TYPES);
+        m_rights |= mask(type);
     }
 
     static constexpr rook_move_t rook_move(const castling_type_t type) {
@@ -110,7 +128,7 @@ public:
     }
 
     // Returns the bitmask of castling rights lost by moving from a square
-    static constexpr int8_t lost_by_moving_from(const square_t square) {
+    static constexpr uint8_t lost_by_moving_from(const square_t square) {
         switch (square) {
             case E1: return WHITE_KINGSIDE | WHITE_QUEENSIDE;
             case H1: return WHITE_KINGSIDE;
@@ -122,10 +140,22 @@ public:
         }
     }
 
-    [[nodiscard]] int8_t mask() const { return m_rights; }
+    [[nodiscard]] std::string to_string() const {
+        std::ostringstream out;
+        for (const auto t : castling_types)
+        {
+            if (mask(t) & m_rights)
+            {
+                out << castling_strings.at(t);
+            }
+        }
+        return out.str();
+    }
+
+    [[nodiscard]] uint8_t mask() const { return m_rights; }
 
 private:
-    int8_t m_rights = ALL;
+    uint8_t m_rights = ALL;
 };
 
 #endif //CASTLE_H

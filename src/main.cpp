@@ -1,4 +1,6 @@
 #include "bitboard.h"
+#include "position.h"
+#include "movegen.h"
 #include <chrono>
 #include <iostream>
 int main()
@@ -23,7 +25,19 @@ int main()
     }
     const auto end = std::chrono::high_resolution_clock::now();
 
-    std::chrono::duration<double> elapsed = end - start;
+    const std::chrono::duration<double> elapsed = end - start;
     std::cout << "Movegen benchmark (QUEEN, " << iterations << "x64): " << elapsed.count() << "s\n";
     std::cout << "Total (to avoid opt): " << total << "\n";
+
+    position_t pos;
+    pos.from_fen("rnbqkbnr/ppppp1pp/3N4/7B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    std::cout << pos;
+    std::cout << bb::string(pos.color_occupancy(BLACK));
+    std::cout << bb::string(pos.checkers(BLACK));
+    std::cout << bb::string(pos.m_state->m_check_mask.at(BLACK));
+    std::cout << bb::string(pos.m_state->m_blockers.at(BLACK));
+    move_list_t l;
+    //gen_pawn_moves<BLACK>(pos, &l);
+    gen_pawn_moves<BLACK>(pos, &l, pos.m_state->m_check_mask.at(BLACK));
+
 }
