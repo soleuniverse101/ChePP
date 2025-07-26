@@ -73,6 +73,8 @@ class position_t
     void                      init_state() const;
     void                      from_fen(std::string_view fen);
     [[nodiscard]] std::string to_string() const;
+    template <color_t c>
+    bool                      is_legal(move_t move) const;
     friend std::ostream&      operator<<(std::ostream& os, const position_t& pos) { return os << pos.to_string(); }
 };
 
@@ -250,7 +252,7 @@ inline void position_t::from_fen(const std::string_view fen)
         else
         {
             const square_t     sq         = square(file, rank);
-            const color_t      turn      = std::isupper(c) ? WHITE : BLACK;
+            const color_t      turn       = std::isupper(c) ? WHITE : BLACK;
             const piece_type_t piece_type = piece_type_from_char(c);
             set_piece(piece_type, sq, turn);
             file = static_cast<file_t>(file + 1);
@@ -321,6 +323,48 @@ inline std::string position_t::to_string() const
 
     out << "  a b c d e f g h\n";
     return out.str();
+}
+
+
+template <color_t c>
+inline bool position_t::is_legal(const move_t move) const
+{
+    constexpr direction_t down = c == WHITE ? SOUTH : NORTH;
+    const bitboard_t   from_bb = bb::sq_mask(move.from_sq());
+    const bitboard_t   to_bb   = bb::sq_mask(move.to_sq());
+    piece_t      pc      = piece_at(move.from_sq());
+    piece_type_t pt      = piece_type_at(move.from_sq());
+    const auto   ksq     = static_cast<square_t>(get_lsb(pieces_occupancy(c, KING)));
+    if (move.type_of() == NORMAL || move.type_of() == PROMOTION)
+    {
+        // check for pins
+        if (bb::sq_mask(move.from_sq()) & blockers(color()))
+        {
+            if (!(bb::sq_mask(move.to_sq()) & bb::line(move.from_sq(), ksq)))
+            {
+                return false;
+            }
+        }
+    }
+    if (move.type_of() == EN_PASSANT)
+    {
+        //en passant can create discovered checks so we check for any long range attack
+        //we know they have not moved. therefore we only need to update global occupancy to cast rays
+        //we check if rays intersect with any long range and if they do that means a there is a check
+        bitboard_t occupancy = color_occupancy(ANY);
+        occupancy &= ~from_bb;
+        occupancy |= to_bb;
+        occupancy &= ~bb::shift<down>(to_bb);
+        const bitboard_t rays = bb::attacks<QUEEN>(ksq, occupancy);
+        for (const auto piece_type : {BISHOP, ROOK, QUEEN})
+        {
+            if (pieces_occupancy(~c,piece_type) & rays)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 #endif

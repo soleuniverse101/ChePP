@@ -1,5 +1,6 @@
 #include "zobrist.h"
 #include "position.h"
+#include "iostream"
 
 using zb = zobrist_t;
 
@@ -103,9 +104,10 @@ zb::zobrist_t(const position_t& pos)
     }
     if (pos.ep_square() != NO_SQUARE)
     {
+        std::cout << fl_of(pos.ep_square()) << "\n";
         m_hash ^= s_ep.at(fl_of(pos.ep_square()));
     }
-    if (s_side == BLACK)
+    if (pos.color() == BLACK)
     {
         m_hash ^= s_side;
     }

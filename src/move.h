@@ -25,6 +25,7 @@ enum move_type_t
 class move_t
 {
   public:
+    move_t() : m_data(0) {}
     constexpr explicit move_t(const std::uint16_t d) : m_data(d) {}
 
     constexpr move_t(const square_t from, const square_t to) : m_data((from << 6) + to) {}

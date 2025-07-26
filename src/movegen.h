@@ -8,16 +8,29 @@
 #include <memory>
 #include <iostream>
 
-
-class move_list_t
-{
-  public:
+struct move_list_t {
     static constexpr size_t max_moves = 256;
-    void                add(move_t m)
-    {
-        std::cout << square_to_string(m.from_sq()) << " " << square_to_string(m.to_sq()) << std::endl;
+    void add(const move_t m) {
+        assert(end < max_moves && "move_list_t overflow");
+        moves[end++] = m;
     }
+
+    const move_t& operator[](const size_t index) const {
+        assert(index < end);
+        return moves[index];
+    }
+    void clear() {
+        end = 0;
+    }
+
+    [[nodiscard]] size_t size() const {
+        return end;
+    }
+
+    std::array<move_t, max_moves> moves;
+    uint8_t end = 0;
 };
+
 
 
 template <color_t c>
@@ -163,8 +176,10 @@ void gen_castling(const position_t& pos, move_list_t& list)
             }
         }
     }
+}
 
-
+void filter_legal(const position_t& pos, move_list_t& list)
+{
 }
 
 

@@ -5,6 +5,7 @@
 #include <iostream>
 int main()
 {
+    std::cout << "HELLO" << std::endl;
     zobrist_t::init(0xFADA);
     bb::init();
     std::cout << bb::string(bb::attacks<QUEEN>(D5, bb::sq_mask(E6)));
@@ -45,8 +46,17 @@ int main()
     std::cout << pos;
     gen_castling<BLACK>(pos, l);
 
-    pos.from_fen("8/8/8/3k4/3pPp2/8/PPPPPPPP/RNBQKBNR w KQkq e3 0 1");
+    l.clear();
+    pos.from_fen("8/8/8/3k4/3pPp2/3R4/PPPPPPPP/RNBQKBNR w KQkq e3 0 1");
     std::cout << pos;
     gen_pawn_moves<BLACK>(pos, &l);
+    for (int i = 0; i < l.size(); i++)
+    {
+        auto mv = l[i];
+        if (pos.is_legal<BLACK>(mv))
+        {
+            std::cout << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << "\n";
+        }
+    }
 
 }
