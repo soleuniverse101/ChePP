@@ -12,6 +12,7 @@
 #include <sstream>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 class state_t
 {
@@ -121,7 +122,7 @@ inline bitboard_t position_t::color_occupancy(const color_t c) const
 }
 inline bitboard_t position_t::check_mask(const color_t c) const
 {
-    return m_state->m_check_mask.at(c) == bb::empty ? bb::full : m_state->m_check_mask.at(c);
+    return m_state->m_check_mask.at(c);
 }
 
 inline void position_t::update_checkers(const color_t c) const
@@ -332,9 +333,15 @@ inline bool position_t::is_legal(const move_t move) const
     constexpr direction_t down = c == WHITE ? SOUTH : NORTH;
     const bitboard_t   from_bb = bb::sq_mask(move.from_sq());
     const bitboard_t   to_bb   = bb::sq_mask(move.to_sq());
-    piece_t      pc      = piece_at(move.from_sq());
-    piece_type_t pt      = piece_type_at(move.from_sq());
+    const piece_type_t pt      = piece_type_at(move.from_sq());
     const auto   ksq     = static_cast<square_t>(get_lsb(pieces_occupancy(c, KING)));
+    if (pt == KING)
+    {
+        if (attacking_sq_bb(move.to_sq()) & color_occupancy(~c))
+        {
+            return false;
+        }
+    }
     if (move.type_of() == NORMAL || move.type_of() == PROMOTION)
     {
         // check for pins
@@ -348,6 +355,7 @@ inline bool position_t::is_legal(const move_t move) const
     }
     if (move.type_of() == EN_PASSANT)
     {
+
         //en passant can create discovered checks so we check for any long range attack
         //we know they have not moved. therefore we only need to update global occupancy to cast rays
         //we check if rays intersect with any long range and if they do that means a there is a check

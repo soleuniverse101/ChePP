@@ -32,31 +32,32 @@ int main()
     std::cout << "Total (to avoid opt): " << total << "\n";
 
     position_t pos;
-    pos.from_fen("r3kr1r/ppppp1pp/3N4/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     std::cout << pos;
-    std::cout << bb::string(pos.color_occupancy(BLACK));
-    std::cout << bb::string(pos.checkers(BLACK));
-    std::cout << bb::string(pos.m_state->m_check_mask.at(BLACK));
-    std::cout << bb::string(pos.m_state->m_blockers.at(BLACK));
-    move_list_t l;
-    //gen_pawn_moves<BLACK>(pos, &l);
-    gen_pc_moves<ROOK, BLACK>(pos, l);
 
+    move_list_t l1;
+    gen_legal<WHITE>(pos, l1);
+    for (size_t i = 0; i < l1.size(); i++)
+    {
+        const auto mv = l1[i];
+        std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << std::endl;
+    }
+    //gen_pawn_moves<BLACK>(pos, &l);
+    std::cout << "the nb of legal moves is " << l1.size() << std::endl;
+    l1.clear();
     pos.from_fen("r3k2r/pppppppp/2N5/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     std::cout << pos;
-    gen_castling<BLACK>(pos, l);
-
+    gen_castling<BLACK>(pos, l1);
+    move_list_t l;
     l.clear();
-    pos.from_fen("8/8/8/3k4/3pPp2/3R4/PPPPPPPP/RNBQKBNR w KQkq e3 0 1");
+    pos.from_fen("8/8/2Q6/3k4/3pPp2/3R4/PPPPPPPP/RNBQKBNR w KQkq e3 0 1");
     std::cout << pos;
-    gen_pawn_moves<BLACK>(pos, &l);
-    for (int i = 0; i < l.size(); i++)
+    gen_legal<BLACK>(pos, l);
+    for (size_t i = 0; i < l.size(); i++)
     {
-        auto mv = l[i];
-        if (pos.is_legal<BLACK>(mv))
-        {
-            std::cout << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << "\n";
-        }
+        const auto mv = l[i];
+        std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << std::endl;
     }
+    std::cout << "HELLO"<< std::endl;
 
 }
