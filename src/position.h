@@ -250,9 +250,9 @@ inline void position_t::from_fen(const std::string_view fen)
         else
         {
             const square_t     sq         = square(file, rank);
-            const color_t      color      = std::isupper(c) ? WHITE : BLACK;
+            const color_t      turn      = std::isupper(c) ? WHITE : BLACK;
             const piece_type_t piece_type = piece_type_from_char(c);
-            set_piece(piece_type, sq, color);
+            set_piece(piece_type, sq, turn);
             file = static_cast<file_t>(file + 1);
         }
     }
