@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <bit>
 
 using hash_t      = std::uint64_t;
 using bitboard_t = std::uint64_t;
