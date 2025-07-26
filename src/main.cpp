@@ -31,16 +31,22 @@ int main()
     std::cout << "Total (to avoid opt): " << total << "\n";
 
     position_t pos;
-    pos.from_fen("r3k2r/ppppp1pp/3N4/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    pos.from_fen("r3kr1r/ppppp1pp/3N4/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     std::cout << pos;
     std::cout << bb::string(pos.color_occupancy(BLACK));
     std::cout << bb::string(pos.checkers(BLACK));
     std::cout << bb::string(pos.m_state->m_check_mask.at(BLACK));
     std::cout << bb::string(pos.m_state->m_blockers.at(BLACK));
     move_list_t l;
-    gen_pawn_moves<BLACK>(pos, &l);
+    //gen_pawn_moves<BLACK>(pos, &l);
+    gen_pc_moves<ROOK, BLACK>(pos, l);
+
     pos.from_fen("r3k2r/pppppppp/2N5/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     std::cout << pos;
     gen_castling<BLACK>(pos, l);
+
+    pos.from_fen("8/8/8/3k4/3pPp2/8/PPPPPPPP/RNBQKBNR w KQkq e3 0 1");
+    std::cout << pos;
+    gen_pawn_moves<BLACK>(pos, &l);
 
 }

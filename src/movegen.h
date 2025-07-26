@@ -26,6 +26,7 @@ void gen_pawn_moves(const position_t& pos, move_list_t* list)
     //check mask refers to king attackers u rays of king attackers
     constexpr direction_t up               = c == WHITE ? NORTH : SOUTH;
     constexpr direction_t right             = c == WHITE ? EAST : WEST;
+    constexpr auto down          = static_cast<direction_t>(-up);
     constexpr auto up_right          = static_cast<direction_t>(up + right);
     constexpr auto up_left          = static_cast<direction_t>(up - right);
 
@@ -77,8 +78,14 @@ void gen_pawn_moves(const position_t& pos, move_list_t* list)
     }
     //capture
     {
+
         bitboard_t capturable = enemy | ep_bb;
-        bitboard_t  take_right = bb::shift<up_right>(pawns & ~bb_promotion_rank) & capturable & check_mask;
+        bitboard_t ep_mask = bb::empty;
+        if (check_mask & bb::shift<down>(ep_bb))
+        {
+            ep_mask = ep_bb;
+        }
+        bitboard_t  take_right = bb::shift<up_right>(pawns & ~bb_promotion_rank) & capturable & (check_mask | ep_mask);
         while (take_right)
         {
             if (const auto sq = static_cast<square_t>(pop_lsb(take_right)); sq == pos.ep_square()) [[unlikely]]
@@ -91,7 +98,7 @@ void gen_pawn_moves(const position_t& pos, move_list_t* list)
 
             }
         }
-        bitboard_t  take_left = bb::shift<up_left>(pawns & ~bb_promotion_rank) & capturable & check_mask;
+        bitboard_t  take_left = bb::shift<up_left>(pawns & ~bb_promotion_rank) & capturable & (check_mask | ep_mask);
         while (take_left)
         {
             if (const auto sq = static_cast<square_t>(pop_lsb(take_left)); sq == pos.ep_square()) [[unlikely]]

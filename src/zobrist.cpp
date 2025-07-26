@@ -39,7 +39,7 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     {
         // ep square should be set only if it is playable
         // aka if a piece can play en passant
-        m_hash ^= s_ep.at(pos.ep_square()); // reset old ep square
+        m_hash ^= s_ep.at(fl_of(pos.ep_square())); // reset old ep square
     }
 
     const square_t    from  = move.from_sq();
@@ -76,7 +76,7 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
         // set new ep square
         else if (pt == PAWN && (to - from == (2 * up)))
         {
-            m_hash ^= s_ep.at(rk_of(to));
+            m_hash ^= s_ep.at(fl_of(to));
         }
     }
     if constexpr (move_type == EN_PASSANT)
@@ -103,7 +103,7 @@ zb::zobrist_t(const position_t& pos)
     }
     if (pos.ep_square() != NO_SQUARE)
     {
-        m_hash ^= s_ep.at(pos.ep_square());
+        m_hash ^= s_ep.at(fl_of(pos.ep_square()));
     }
     if (s_side == BLACK)
     {

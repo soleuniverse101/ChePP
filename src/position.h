@@ -101,8 +101,8 @@ inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
            (bb::attacks<ROOK>(sq, m_global_occupancy) & pieces_bb(ROOK)) |
            (bb::attacks<BISHOP>(sq, m_global_occupancy) & pieces_bb(BISHOP)) |
            (bb::attacks<KNIGHT>(sq, m_global_occupancy) & pieces_bb(KNIGHT)) |
-           (bb::attacks<PAWN>(sq, m_global_occupancy, WHITE) & pieces_bb(WHITE, PAWN)) |
-           (bb::attacks<PAWN>(sq, m_global_occupancy, BLACK) & pieces_bb(BLACK, PAWN)) |
+           (bb::attacks<PAWN>(sq, m_global_occupancy, BLACK) & pieces_bb(WHITE, PAWN)) |
+           (bb::attacks<PAWN>(sq, m_global_occupancy, WHITE) & pieces_bb(BLACK, PAWN)) |
            (bb::attacks<KING>(sq, m_global_occupancy) & pieces_bb(KING));
 }
 inline bitboard_t position_t::pieces_occupancy(const color_t c, const piece_type_t p) const
