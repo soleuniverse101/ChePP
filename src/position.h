@@ -19,8 +19,9 @@ class state_t
   public:
     state_t() : m_previous(nullptr), m_ep_square(NO_SQUARE), m_crs(castling_rights_t{0}), m_hash(zobrist_t{0}) {}
     explicit state_t(std::unique_ptr<state_t> prev)
-        : m_previous(std::move(prev)), m_ep_square(NO_SQUARE), m_crs(prev->m_crs), m_hash(prev->m_hash)
+        : m_ep_square(NO_SQUARE), m_crs(prev->m_crs), m_hash(prev->m_hash)
     {
+        m_previous = std::move(prev);
     }
     std::unique_ptr<state_t> m_previous;
     square_t                 m_ep_square;
@@ -43,7 +44,7 @@ class position_t
 
     [[nodiscard]] std::span<const piece_t> pieces() const { return m_pieces; }
     [[nodiscard]] piece_t                  piece_at(const square_t sq) const { return m_pieces.at(sq); }
-    [[nodiscard]] piece_type_t piece_type_at(const square_t sq) const { return piece_type(m_pieces.at(sq)); }
+    [[nodiscard]] piece_type_t piece_type_at(const square_t sq) const { return piece_piece_type(m_pieces.at(sq)); }
     [[nodiscard]] bool         is_occupied(const square_t sq) const { return m_global_occupancy & bb::sq_mask(sq); }
     [[nodiscard]] color_t      color() const { return m_color; }
     [[nodiscard]] bitboard_t   pieces_occupancy(color_t c, piece_type_t p) const;
@@ -70,12 +71,18 @@ class position_t
     [[nodiscard]] bitboard_t attacking_sq_bb(square_t sq) const;
 
     void                      update_checkers(color_t c) const;
-    void                      set_piece(piece_type_t piece_type, square_t sq, color_t c);
+    void                      set_piece(piece_t piece, square_t sq);
+    void                      set_piece(piece_type_t piece_type, color_t color, square_t sq);
+    void                      remove_piece(piece_type_t piece_type, color_t color, square_t sq);
+    void                      remove_piece(piece_t piece, square_t sq);
+    void                      move_piece(piece_type_t piece_type, color_t c, square_t from, square_t to);
+    void                      move_piece(piece_t piece, square_t from, square_t to);
     void                      init_state() const;
     void                      from_fen(std::string_view fen);
     [[nodiscard]] std::string to_string() const;
     template <color_t c>
-    bool                      is_legal(move_t move) const;
+    [[nodiscard]] bool                 is_legal(move_t move) const;
+    void                 do_move(move_t move);
     friend std::ostream&      operator<<(std::ostream& os, const position_t& pos) { return os << pos.to_string(); }
 };
 
@@ -156,12 +163,50 @@ inline void position_t::update_checkers(const color_t c) const
     }
 }
 
-inline void position_t::set_piece(const piece_type_t piece_type, const square_t sq, const color_t c)
+inline void position_t::set_piece(const piece_t piece, const square_t sq)
 {
-    const piece_t pc = piece(piece_type, c);
+    piece_type_t pt = piece_piece_type(piece);
+    color_t c = piece_color(piece);
+    m_global_occupancy |= m_color_occupancy.at(c) |= m_pieces_occupancy.at(c).at(pt) |= bb::sq_mask(sq);
+    m_pieces.at(sq) = piece;
+}
+
+inline void position_t::set_piece(const piece_type_t piece_type, const color_t color, const square_t sq)
+{
+    m_global_occupancy |= m_color_occupancy.at(color) |= m_pieces_occupancy.at(color).at(piece_type) |= bb::sq_mask(sq);
+    m_pieces.at(sq) = piece(piece_type, color);
+}
+
+
+inline void position_t::remove_piece(const piece_type_t piece_type, const color_t color, const square_t sq)
+{
+    std::cout << static_cast<int>(piece_at(sq)) << " " << static_cast<int>(piece(piece_type, color))<< std::endl;
+    assert(piece_at(sq) == piece(piece_type, color));
     // in this order
-    m_global_occupancy |= m_color_occupancy.at(c) |= m_pieces_occupancy.at(c).at(piece_type) |= bb::sq_mask(sq);
-    m_pieces.at(sq) = pc;
+    m_pieces_occupancy.at(color).at(piece_type) &= m_color_occupancy.at(color) &= m_global_occupancy &= ~bb::sq_mask(sq);
+    m_pieces.at(sq) = NO_PIECE;
+}
+
+inline void position_t::remove_piece(const piece_t piece, const square_t sq)
+{
+    piece_type_t pt = piece_piece_type(piece);
+    color_t c = piece_color(piece);
+    assert(piece_at(sq) ==  piece);
+    // in this order
+    m_pieces_occupancy.at(c).at(pt) &= m_color_occupancy.at(c) &= m_global_occupancy &= ~bb::sq_mask(sq);
+    m_pieces.at(sq) = NO_PIECE;
+}
+
+inline void position_t::move_piece(const piece_type_t piece_type, const color_t c, const square_t from, const square_t to)
+{
+    remove_piece(piece_type, c, from);
+    set_piece(piece_type, c, to);
+}
+
+inline void position_t::move_piece(const piece_t piece, const square_t from, const square_t to)
+{
+    remove_piece(piece, from);
+    set_piece(piece, to);
 }
 
 inline void position_t::init_state() const
@@ -255,7 +300,7 @@ inline void position_t::from_fen(const std::string_view fen)
             const square_t     sq         = square(file, rank);
             const color_t      turn       = std::isupper(c) ? WHITE : BLACK;
             const piece_type_t piece_type = piece_type_from_char(c);
-            set_piece(piece_type, sq, turn);
+            set_piece(piece_type, turn, sq);
             file = static_cast<file_t>(file + 1);
         }
     }
@@ -330,11 +375,11 @@ inline std::string position_t::to_string() const
 template <color_t c>
 inline bool position_t::is_legal(const move_t move) const
 {
-    constexpr direction_t down = c == WHITE ? SOUTH : NORTH;
-    const bitboard_t   from_bb = bb::sq_mask(move.from_sq());
-    const bitboard_t   to_bb   = bb::sq_mask(move.to_sq());
-    const piece_type_t pt      = piece_type_at(move.from_sq());
-    const auto   ksq     = static_cast<square_t>(get_lsb(pieces_occupancy(c, KING)));
+    constexpr direction_t down    = c == WHITE ? SOUTH : NORTH;
+    const bitboard_t      from_bb = bb::sq_mask(move.from_sq());
+    const bitboard_t      to_bb   = bb::sq_mask(move.to_sq());
+    const piece_type_t    pt      = piece_type_at(move.from_sq());
+    const auto            ksq     = static_cast<square_t>(get_lsb(pieces_occupancy(c, KING)));
     if (pt == KING)
     {
         if (attacking_sq_bb(move.to_sq()) & color_occupancy(~c))
@@ -356,9 +401,9 @@ inline bool position_t::is_legal(const move_t move) const
     if (move.type_of() == EN_PASSANT)
     {
 
-        //en passant can create discovered checks so we check for any long range attack
-        //we know they have not moved. therefore we only need to update global occupancy to cast rays
-        //we check if rays intersect with any long range and if they do that means a there is a check
+        // en passant can create discovered checks so we check for any long range attack
+        // we know they have not moved. therefore we only need to update global occupancy to cast rays
+        // we check if rays intersect with any long range and if they do that means a there is a check
         bitboard_t occupancy = color_occupancy(ANY);
         occupancy &= ~from_bb;
         occupancy |= to_bb;
@@ -366,7 +411,7 @@ inline bool position_t::is_legal(const move_t move) const
         const bitboard_t rays = bb::attacks<QUEEN>(ksq, occupancy);
         for (const auto piece_type : {BISHOP, ROOK, QUEEN})
         {
-            if (pieces_occupancy(~c,piece_type) & rays)
+            if (pieces_occupancy(~c, piece_type) & rays)
             {
                 return false;
             }
@@ -375,4 +420,60 @@ inline bool position_t::is_legal(const move_t move) const
     return true;
 }
 
+inline void position_t::do_move(const move_t move)
+{
+    m_color  = ~m_color;
+    m_state = std::make_unique<state_t>(std::move(m_state));
+
+
+    const square_t    from  = move.from_sq();
+    const square_t    to    = move.to_sq();
+    const piece_t     pc    = piece_at(from);
+    const piece_type_t pt = piece_type_at(from);
+    const color_t     c = color();
+    const direction_t up    = c == WHITE ? NORTH : SOUTH;
+    const move_type_t move_type = move.type_of();
+    // are we losing castling rights?
+    crs().remove_right(castling_rights_t::lost_by_moving_from(from));
+
+    //are we castling?
+    if  (move_type == CASTLING)
+    {
+        const auto castling_type = move.castling_type();
+        auto [k_from, k_to]                 = castling_rights_t::king_move(castling_type);
+        auto [r_from, r_to]                 = castling_rights_t::rook_move(castling_type);
+
+        move_piece(KING, c, k_from, k_to);
+        move_piece(ROOK, c, r_from, r_to);
+        return;
+    }
+
+    if  (move_type == NORMAL)
+    {
+        // capture
+        if (is_occupied(to))
+        {
+            assert(piece_color(piece_at(to)) == ~c);
+            remove_piece(piece_at(to), to);
+        }
+        // set new ep square
+        else if (pt == PAWN && (to - from == (2 * up)))
+        {
+            m_state->m_ep_square = static_cast<square_t>(from + static_cast<int>(up));
+        }
+    }
+    if  (move_type == EN_PASSANT)
+    {
+        // remove two up right / left
+        remove_piece(PAWN, ~c, static_cast<square_t>(static_cast<int>(to) - up));
+    }
+    move_piece(pt, c, from, to);
+    if  (move_type == PROMOTION)
+    {
+        //remove pawn add promoted type
+        remove_piece(pc, to);
+        set_piece(move.promotion_type(), c, to);
+    }
+
+}
 #endif

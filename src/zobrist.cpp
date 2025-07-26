@@ -82,8 +82,8 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     }
     if constexpr (move_type == EN_PASSANT)
     {
-        // remove two up right / left
-        flip_piece(pos.piece_at(to), static_cast<square_t>(static_cast<int>(to) + up));
+        // remove ep pawn
+        flip_piece(piece(PAWN, ~color), static_cast<square_t>(static_cast<int>(to) - up));
     }
     if constexpr (move_type == PROMOTION)
     {

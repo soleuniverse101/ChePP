@@ -50,13 +50,16 @@ int main()
     gen_castling<BLACK>(pos, l1);
     move_list_t l;
     l.clear();
-    pos.from_fen("8/8/2Q6/3k4/3pPp2/3R4/PPPPPPPP/RNBQKBNR w KQkq e3 0 1");
+    pos.from_fen("8/8/8/3k4/3pPp2/2QR4/PPPPPPPP/RNBQKBNR w KQ e3 0 1");
     std::cout << pos;
+    std::cout << pos.crs().to_string() << std::endl;
     gen_legal<BLACK>(pos, l);
     for (size_t i = 0; i < l.size(); i++)
     {
         const auto mv = l[i];
-        std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << std::endl;
+        std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
+        pos.do_move(mv);
+        std::cout << pos;
     }
     std::cout << "HELLO"<< std::endl;
 

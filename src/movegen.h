@@ -163,6 +163,7 @@ void gen_castling(const position_t& pos, move_list_t& list)
         if (cr::mask(cr::type(c, side)) & crs.mask())
         {
             auto [from, to]       = cr::king_move(cr::type(c, side));
+            assert(pos.piece_at(from) == piece(KING, c));
             const direction_t dir = direction_from(from, to);
             assert(dir != INVALID);
             bool safe = true;

@@ -80,6 +80,10 @@ public:
         m_rights &= ~mask(type);
     }
 
+    void remove_right(const uint8_t lose_mask) {
+        m_rights &= ~lose_mask;
+    }
+
     // Remove all rights for a color
      void remove_color(const color_t c) {
         m_rights &= ~(mask(type(c, KINGSIDE)) | mask(type(c, QUEENSIDE)));

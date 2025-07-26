@@ -127,12 +127,12 @@ enum piece_t : int8_t
     NB_PIECES
 };
 
-constexpr piece_type_t piece_type(const piece_t pc)
+constexpr piece_type_t piece_piece_type(const piece_t pc)
 {
     return static_cast<piece_type_t>(static_cast<int8_t>(pc) % NB_PIECE_TYPES);
 }
 
-constexpr color_t color(const color_t pc)
+constexpr color_t piece_color(const piece_t pc)
 {
     return static_cast<color_t>(static_cast<int8_t>(pc) > NB_PIECE_TYPES);
 }
@@ -141,6 +141,7 @@ constexpr piece_t piece(const piece_type_t pc, const color_t c)
 {
     return static_cast<piece_t>(static_cast<int8_t>(pc)  + NB_PIECE_TYPES * static_cast<int8_t>(c));
 }
+
 
 constexpr piece_t p = piece(ROOK, WHITE);
 
