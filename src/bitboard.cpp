@@ -87,7 +87,7 @@ static bitboard_t mask_nb(const bitboard_t mask, const uint64_t n)
     {
         if (sq_mask(sq) & mask)
         {
-            if (1 << idx & n)
+            if (static_cast<bitboard_t>(1) << idx & n)
             {
                 bb |= sq_mask(sq);
             }
@@ -117,7 +117,7 @@ magics_t<pc>::magics_t()
         const bitboard_t mask         = relevancy_mask<pc>(sq);
         const int        nb_ones      = popcount(mask);
         const uint64_t   combinations = 1ULL << nb_ones;
-        const int        shift        = 64 - nb_ones;
+        const size_t        shift      = 64 - nb_ones;
         bitboard_t       magic        = 0;
 
         assert(combinations <= MAX_COMB && "to many blockers variations, check relevancy mask");

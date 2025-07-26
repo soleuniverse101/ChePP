@@ -71,6 +71,8 @@ namespace Bitboard
             case NORTH_WEST:
             case SOUTH_WEST:
                 return ~fl_mask(FILE_A);
+            case INVALID:
+                assert(0 && "invalid direction");
             case NORTH:
             case SOUTH:
             default:
