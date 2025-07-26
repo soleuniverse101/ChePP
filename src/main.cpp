@@ -5,6 +5,7 @@
 #include <iostream>
 int main()
 {
+    zobrist_t::init(0xFADA);
     bb::init();
     std::cout << bb::string(bb::attacks<QUEEN>(D5, bb::sq_mask(E6)));
     std::cout << bb::string(bb::attacks<ROOK>(H8, bb::attacks<QUEEN>(D5, 0)));
@@ -30,14 +31,16 @@ int main()
     std::cout << "Total (to avoid opt): " << total << "\n";
 
     position_t pos;
-    pos.from_fen("rnbqkbnr/ppppp1pp/3N4/7B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    pos.from_fen("r3k2r/ppppp1pp/3N4/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     std::cout << pos;
     std::cout << bb::string(pos.color_occupancy(BLACK));
     std::cout << bb::string(pos.checkers(BLACK));
     std::cout << bb::string(pos.m_state->m_check_mask.at(BLACK));
     std::cout << bb::string(pos.m_state->m_blockers.at(BLACK));
     move_list_t l;
-    //gen_pawn_moves<BLACK>(pos, &l);
-    gen_pawn_moves<BLACK>(pos, &l, pos.m_state->m_check_mask.at(BLACK));
+    gen_pawn_moves<BLACK>(pos, &l);
+    pos.from_fen("r3k2r/pppppppp/2N5/3B3B/4R3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    std::cout << pos;
+    gen_castling<BLACK>(pos, l);
 
 }

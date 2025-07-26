@@ -49,6 +49,7 @@ class position_t
     [[nodiscard]] bitboard_t   color_occupancy(color_t c) const;
     [[nodiscard]] bitboard_t   checkers(const color_t c) const { return m_state->m_checkers.at(c); }
     [[nodiscard]] bitboard_t   blockers(const color_t c) const { return m_state->m_blockers.at(c); }
+    [[nodiscard]] bitboard_t   check_mask(color_t c) const;
     [[nodiscard]] square_t     ep_square() const { return m_state->m_ep_square; }
     [[nodiscard]] castling_rights_t crs() const { return m_state->m_crs; }
     template <class... Ts>
@@ -116,6 +117,10 @@ inline bitboard_t position_t::color_occupancy(const color_t c) const
     }
     return m_color_occupancy.at(c);
 }
+inline bitboard_t position_t::check_mask(const color_t c) const
+{
+    return m_state->m_check_mask.at(c) == bb::empty ? bb::full : m_state->m_check_mask.at(c);
+}
 
 inline void position_t::update_checkers(const color_t c) const
 {
@@ -131,7 +136,7 @@ inline void position_t::update_checkers(const color_t c) const
         {
             const auto sq         = static_cast<square_t>(pop_lsb(enemies));
             const auto line       = bb::from_to_excl(sq, ksq);
-            const auto on_line = line & color_occupancy(ANY);
+            const auto on_line    = line & color_occupancy(ANY);
             const auto n_blockers = popcount(on_line);
             if (n_blockers == 0)
             {

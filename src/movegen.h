@@ -21,7 +21,7 @@ class move_list_t
 
 
 template <color_t c>
-void gen_pawn_moves(const position_t& pos, move_list_t* list, bitboard_t check_mask = bb::full)
+void gen_pawn_moves(const position_t& pos, move_list_t* list)
 {
     //check mask refers to king attackers u rays of king attackers
     constexpr direction_t up               = c == WHITE ? NORTH : SOUTH;
@@ -31,6 +31,7 @@ void gen_pawn_moves(const position_t& pos, move_list_t* list, bitboard_t check_m
 
     constexpr bitboard_t bb_promotion_rank = c == WHITE ? bb::rk_mask(RANK_7) : bb::rk_mask(RANK_2);
     constexpr bitboard_t bb_third_rank     = c == WHITE ? bb::rk_mask(RANK_3) : bb::rk_mask(RANK_6);
+    const bitboard_t check_mask = pos.check_mask(c);
     const bitboard_t     available         = ~pos.color_occupancy(ANY);
     const bitboard_t     enemy             = pos.color_occupancy(~c);
     const bitboard_t     pawns             = pos.pieces_bb(c, PAWN);
@@ -108,8 +109,9 @@ void gen_pawn_moves(const position_t& pos, move_list_t* list, bitboard_t check_m
 
 
 template <piece_type_t pc, color_t c>
-void gen_pc_moves(const position_t& pos, move_list_t& list, bitboard_t check_mask = bb::full)
+void gen_pc_moves(const position_t& pos, move_list_t& list)
 {
+    const bitboard_t check_mask = pos.check_mask(c);
     bitboard_t bb = pos.pieces_occupancy(c, pc);
     while (bb)
     {
@@ -124,8 +126,9 @@ void gen_pc_moves(const position_t& pos, move_list_t& list, bitboard_t check_mas
 
 
 template <color_t c>
-void gen_castling(const position_t& pos, move_list_t& list, const bitboard_t check_mask = bb::full)
+void gen_castling(const position_t& pos, move_list_t& list)
 {
+    const bitboard_t check_mask = pos.check_mask(c);
     using cr = castling_rights_t;
     if (check_mask != bb::full)
         return;
@@ -139,7 +142,7 @@ void gen_castling(const position_t& pos, move_list_t& list, const bitboard_t che
             const direction_t dir = direction_from(from, to);
             assert(dir != INVALID);
             bool safe  = true;
-            for (square_t sq = from; sq <= to; sq = static_cast<square_t>(sq + static_cast<int>(dir)))
+            for (square_t sq = from; sq != to; sq = static_cast<square_t>(sq + static_cast<int>(dir)))
             {
                 if (pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
                 {
