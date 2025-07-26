@@ -71,6 +71,8 @@ namespace Bitboard
             case NORTH_WEST:
             case SOUTH_WEST:
                 return ~fl_mask(FILE_A);
+            case NORTH:
+            case SOUTH:
             default:
                 return full;
         }
@@ -179,7 +181,7 @@ template <piece_type_t pc>
 constexpr bitboard_t relevancy_mask(const square_t sq)
 {
     bitboard_t mask = ~bb::sides;
-    if (pc == ROOK)
+    if constexpr (pc == ROOK)
     {
         if (rk_of(sq) == RANK_1 || rk_of(sq) == RANK_8)
         {
