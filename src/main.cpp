@@ -3,6 +3,38 @@
 #include "movegen.h"
 #include <chrono>
 #include <iostream>
+
+void perft(position_t& pos, int ply, size_t& out)
+{
+    move_list_t l;
+    if (pos.color() == WHITE)
+    {
+        gen_legal<WHITE>(pos, l);
+
+    } else
+    {
+        gen_legal<BLACK>(pos, l);
+
+    }
+    for (size_t i = 0; i < l.size(); i++)
+    {
+        const auto mv = l[i];
+        //std::cout << pos;
+        pos.do_move(mv);
+        //std::cout << pos;
+        if (ply> 0)
+        {
+            perft(pos, ply - 1, out);
+        }
+        if (ply == 0)
+        {
+            out++;
+        }
+        pos.undo_move(mv);
+    }
+
+}
+
 int main()
 {
     std::cout << "HELLO" << std::endl;
@@ -17,7 +49,7 @@ int main()
     constexpr int           iterations = 1'000'000;
     volatile bitboard_t     total      = 0;
 
-    const auto start = std::chrono::high_resolution_clock::now();
+     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < iterations; ++i)
     {
         for (int sq = 0; sq < 64; ++sq)
@@ -25,9 +57,9 @@ int main()
             total ^= bb::attacks<QUEEN>(static_cast<square_t>(sq), i);
         }
     }
-    const auto end = std::chrono::high_resolution_clock::now();
+     auto end = std::chrono::high_resolution_clock::now();
 
-    const std::chrono::duration<double> elapsed = end - start;
+     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Movegen benchmark (QUEEN, " << iterations << "x64): " << elapsed.count() << "s\n";
     std::cout << "Total (to avoid opt): " << total << "\n";
 
@@ -50,7 +82,7 @@ int main()
     gen_castling<BLACK>(pos, l1);
     move_list_t l;
     l.clear();
-    pos.from_fen("8/8/8/3k4/3pPp2/2QR4/PPPPPPPP/RNBQKBNR w KQ e3 0 1");
+    pos.from_fen("8/8/8/3k4/3pPp2/2QR4/PPPPPPPP/RNBQKBNR b KQ e3 0 1");
     std::cout << pos;
     std::cout << pos.crs().to_string() << std::endl;
     gen_legal<BLACK>(pos, l);
@@ -60,7 +92,22 @@ int main()
         std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
         pos.do_move(mv);
         std::cout << pos;
+        pos.undo_move(mv);
+        std::cout << pos;
     }
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
+    size_t out = 0;
+    start = std::chrono::high_resolution_clock::now();
+
+    int depth = 2;
+    perft(pos, depth - 1, out);
+    end = std::chrono::high_resolution_clock::now();
+
+    elapsed = end - start;
+    std::cout << "perft " << depth << ": " << elapsed.count() << "s\n";
+    std::cout << "perft " << out << std::endl;
+
     std::cout << "HELLO"<< std::endl;
 
 }

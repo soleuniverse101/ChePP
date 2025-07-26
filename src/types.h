@@ -134,7 +134,7 @@ constexpr piece_type_t piece_piece_type(const piece_t pc)
 
 constexpr color_t piece_color(const piece_t pc)
 {
-    return static_cast<color_t>(static_cast<int8_t>(pc) > NB_PIECE_TYPES);
+    return static_cast<color_t>(static_cast<int8_t>(pc) >= NB_PIECE_TYPES);
 }
 
 constexpr piece_t piece(const piece_type_t pc, const color_t c)

@@ -193,13 +193,13 @@ void gen_king_moves(const position_t& pos, move_list_t& list)
     while (quiet)
     {
         const auto to = static_cast<square_t>(pop_lsb(quiet));
-        list.add(move_t::make<NORMAL>(from, to, KING));
+        list.add(move_t::make<NORMAL>(from, to));
     }
     bitboard_t captures = moves & pos.color_occupancy(~c);
     while (captures)
     {
         const auto to = static_cast<square_t>(pop_lsb(captures));
-        list.add(move_t::make<NORMAL>(from, to, KING));
+        list.add(move_t::make<NORMAL>(from, to));
     }
     gen_castling<c>(pos, list);
 }
@@ -220,6 +220,7 @@ void gen_legal(const position_t& pos, move_list_t& list)
         if (pos.is_legal<c>(list[i]))
         {
             list[idx++] = list[i];
+
         }
     }
     list.shrink(list.size() - idx);

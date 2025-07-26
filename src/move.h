@@ -10,7 +10,7 @@
 
 enum move_type_t
 {
-    NORMAL,
+    NORMAL = 0,
     PROMOTION  = 1 << 14,
     EN_PASSANT = 2 << 14,
     CASTLING   = 3 << 14
@@ -78,7 +78,7 @@ static constexpr move_t make(const square_t from, const square_t to,
 
     [[nodiscard]] constexpr move_type_t type_of() const
     {
-        return static_cast<move_type_t>(m_data & (3 >> 14));
+        return static_cast<move_type_t>(m_data & 0b11 << 14);
     }
 
     [[nodiscard]] constexpr piece_type_t promotion_type() const
