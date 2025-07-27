@@ -79,19 +79,19 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
         while (push)
         {
             const auto sq = static_cast<square_t>(pop_lsb(push));
-            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - static_cast<int>(up)), sq));
+            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - static_cast<int>(up)), sq, QUEEN));
         }
         bitboard_t take_right = bb::shift<up_right>(promotions) & enemy & check_mask;
         while (take_right)
         {
             const auto sq = static_cast<square_t>(pop_lsb(take_right));
-            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up + right)), sq));
+            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up + right)), sq, QUEEN));
         }
         bitboard_t take_left = bb::shift<up_left>(promotions) & enemy & check_mask;
         while (take_left)
         {
             const auto sq = static_cast<square_t>(pop_lsb(take_left));
-            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up - right)), sq));
+            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up - right)), sq, QUEEN));
         }
     }
     // capture
@@ -151,9 +151,8 @@ void gen_pc_moves(const position_t& pos, move_list_t& list)
 template <color_t c>
 void gen_castling(const position_t& pos, move_list_t& list)
 {
-    const bitboard_t check_mask = pos.check_mask(c) == bb::empty ? bb::full : pos.check_mask(c);
     using cr                    = castling_rights_t;
-    if (check_mask != bb::full)
+    if (pos.check_mask(c) != bb::empty)
         return;
     const cr crs = pos.crs();
     if (crs.mask() == 0)
@@ -162,14 +161,16 @@ void gen_castling(const position_t& pos, move_list_t& list)
     {
         if (cr::mask(cr::type(c, side)) & crs.mask())
         {
-            auto [from, to]       = cr::king_move(cr::type(c, side));
-            assert(pos.piece_at(from) == piece(KING, c));
-            const direction_t dir = direction_from(from, to);
+            auto [k_from, k_to]       = cr::king_move(cr::type(c, side));
+            auto [r_from, r_to] = cr::rook_move(cr::type(c, side));
+            assert(pos.piece_at(k_from) == piece(KING, c));
+            bool safe = ((bb::from_to_excl(k_from, r_from) & pos.color_occupancy(ANY)) == bb::empty);
+            const direction_t dir = direction_from(k_from, k_to);
             assert(dir != INVALID);
-            bool safe = true;
-            for (square_t sq = from; sq != to; sq = static_cast<square_t>(sq + static_cast<int>(dir)))
+            const int offset = dir;
+            for (auto sq = k_from; sq != k_to && safe; sq = static_cast<square_t>(sq + offset))
             {
-                if (pos.piece_at(sq) != NO_PIECE || pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
+                if (pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
                 {
                     safe = false;
                     break;
@@ -177,7 +178,7 @@ void gen_castling(const position_t& pos, move_list_t& list)
             }
             if (safe)
             {
-                list.add(move_t::make<CASTLING>(from, to, cr::type(c, side)));
+                list.add(move_t::make<CASTLING>(k_from, k_to, cr::type(c, side)));
             }
         }
     }

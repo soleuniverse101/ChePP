@@ -46,7 +46,7 @@ class position_t
     [[nodiscard]] std::span<const piece_t> pieces() const { return m_pieces; }
     [[nodiscard]] piece_t                  piece_at(const square_t sq) const { return m_pieces.at(sq); }
     [[nodiscard]] piece_type_t piece_type_at(const square_t sq) const { return piece_piece_type(m_pieces.at(sq)); }
-    [[nodiscard]] bool         is_occupied(const square_t sq) const { return m_global_occupancy & bb::sq_mask(sq); }
+    [[nodiscard]] bool         is_occupied(const square_t sq) const { return (m_global_occupancy & bb::sq_mask(sq)) != bb::empty; }
     [[nodiscard]] color_t      color() const { return m_color; }
     [[nodiscard]] bitboard_t   pieces_occupancy(color_t c, piece_type_t p) const;
     [[nodiscard]] bitboard_t   color_occupancy(color_t c) const;
@@ -54,7 +54,7 @@ class position_t
     [[nodiscard]] bitboard_t   blockers(const color_t c) const { return m_state->m_blockers.at(c); }
     [[nodiscard]] bitboard_t   check_mask(color_t c) const;
     [[nodiscard]] square_t     ep_square() const { return m_state->m_ep_square; }
-    [[nodiscard]] castling_rights_t crs() const { return m_state->m_crs; }
+    [[nodiscard]] castling_rights_t& crs() const { return m_state->m_crs; }
     template <class... Ts>
     bitboard_t pieces_bb(color_t c, piece_type_t first, const Ts... rest) const;
     template <class... Ts>
@@ -344,7 +344,7 @@ inline std::string position_t::to_string() const
     std::ostringstream out;
 
     out << "Position:\n";
-    out << "Side to move: " << (m_color == WHITE ? "White" : "Black") << "\n";
+    out << "Side to move: " << (color() == WHITE ? "White" : "Black") << "\n";
     out << "Castling rights: " << m_state->m_crs.to_string() << "\n";
 
     out << "En passant square: ";
@@ -435,19 +435,24 @@ inline void position_t::do_move(const move_t move)
     const direction_t up    = c == WHITE ? NORTH : SOUTH;
     const move_type_t move_type = move.type_of();
     // are we losing castling rights?
-    crs().remove_right(castling_rights_t::lost_by_moving_from(from));
 
     //are we castling?
+    crs().remove_right(castling_rights_t::lost_by_moving_from(from));
+    crs().remove_right(castling_rights_t::lost_by_moving_from(to));
     if  (move_type == CASTLING)
     {
         const auto castling_type = move.castling_type();
         auto [k_from, k_to]                 = castling_rights_t::king_move(castling_type);
         auto [r_from, r_to]                 = castling_rights_t::rook_move(castling_type);
 
+        //std::cout << "HERE" << this;
+        remove_piece(ROOK, c, r_from);
         move_piece(KING, c, k_from, k_to);
-        move_piece(ROOK, c, r_from, r_to);
+        set_piece(ROOK, c, r_to);
+        update_checkers(~c);
         return;
     }
+
 
     if  (move_type == NORMAL)
     {
@@ -469,7 +474,6 @@ inline void position_t::do_move(const move_t move)
         // remove two up right / left
         remove_piece(PAWN, ~c, static_cast<square_t>(to - static_cast<int>(up)));
     }
-    move_piece(pt, c, from, to);
     if  (move_type == PROMOTION)
     {
         if (is_occupied(to))
@@ -478,10 +482,18 @@ inline void position_t::do_move(const move_t move)
             m_state->m_taken = piece_at(to);
             remove_piece(piece_at(to), to);
         }
+        move_piece(pt, c, from, to);
+
         //remove pawn add promoted type
         remove_piece(PAWN, c, to);
         set_piece(move.promotion_type(), c, to);
     }
+    else
+    {
+        move_piece(pt, c, from, to);
+    }
+    update_checkers(~c);
+
 
 }
 
@@ -508,13 +520,14 @@ inline void position_t::undo_move(const move_t move)
         auto [k_from, k_to]                 = castling_rights_t::king_move(castling_type);
         auto [r_from, r_to]                 = castling_rights_t::rook_move(castling_type);
 
+        remove_piece(ROOK, c, r_to);
         move_piece(KING, c, k_to, k_from);
-        move_piece(ROOK, c, r_to, r_from);
+        set_piece(ROOK, c, r_from);
         return;
     }
 
 
-
+    move_piece(pt, c, to, from);
     if  (move_type == PROMOTION)
     {
         if (taken != NO_PIECE)
@@ -524,9 +537,8 @@ inline void position_t::undo_move(const move_t move)
         }
         //remove pawn add promoted type
         remove_piece(move.promotion_type(), c, from);
-        set_piece(PAWN, c, to);
+        set_piece(PAWN, c, from);
     }
-    move_piece(pt, c, to, from);
     if  (move_type == EN_PASSANT)
     {
         // remove two up right / left

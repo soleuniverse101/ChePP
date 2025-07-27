@@ -159,7 +159,7 @@ public:
     [[nodiscard]] uint8_t mask() const { return m_rights; }
 
 private:
-    uint8_t m_rights = ALL;
+    uint8_t m_rights;
 };
 
 #endif //CASTLE_H

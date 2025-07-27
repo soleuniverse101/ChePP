@@ -20,6 +20,9 @@ void perft(position_t& pos, int ply, size_t& out)
     {
         const auto mv = l[i];
         //std::cout << pos;
+        //std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
+        //std::cout << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
+
         pos.do_move(mv);
         //std::cout << pos;
         if (ply> 0)
@@ -96,11 +99,13 @@ int main()
         std::cout << pos;
     }
     pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
+    //pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
+    std::cout << pos;
+    std::cout << " START PERFT " << std::endl;
     size_t out = 0;
     start = std::chrono::high_resolution_clock::now();
 
-    int depth = 2;
+    int depth = 5;
     perft(pos, depth - 1, out);
     end = std::chrono::high_resolution_clock::now();
 
