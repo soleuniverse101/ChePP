@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iostream>
 
+
 void perft(position_t& pos, const int ply, size_t& out)
 {
     move_list_t l;
@@ -16,6 +17,15 @@ void perft(position_t& pos, const int ply, size_t& out)
         gen_legal<BLACK>(pos, l);
 
     }
+    if (l.size() == 0)
+    {
+        //std::cout << pos;
+    }
+    if (ply == 0)
+    {
+        out += l.size();
+        return;
+    }
     for (size_t i = 0; i < l.size(); i++)
     {
         const auto mv = l[i];
@@ -25,14 +35,9 @@ void perft(position_t& pos, const int ply, size_t& out)
 
         pos.do_move(mv);
         //std::cout << pos;
-        if (ply> 0)
-        {
+
             perft(pos, ply - 1, out);
-        }
-        if (ply == 0)
-        {
-            out++;
-        }
+
         pos.undo_move(mv);
     }
 
@@ -50,17 +55,17 @@ int main()
     std::cout << pos;
     std::cout << " START PERFT " << std::endl;
     size_t     out   = 0;
-    const auto start = std::chrono::high_resolution_clock::now();
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-    const int depth = 5;
-    for (int i = 0; i < 100; i++)
+    const int depth = 6;
+    for (int i = 0; i < 1; i++)
     {    perft(pos, depth - 1, out);
 
     }
-    const auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = end - start;
 
-    const auto elapsed = end - start;
-    std::cout << "perft " << depth << ": " << elapsed.count() << "s\n";
+    std::cout << "perft " << depth << ": " << diff.count() << "s\n";
     std::cout << "perft " << out << std::endl;
 
     std::cout << "HELLO"<< std::endl;

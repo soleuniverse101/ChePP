@@ -18,16 +18,14 @@ class state_t
 {
   public:
     state_t()
-        : m_previous(nullptr), m_ep_square(NO_SQUARE), m_crs(castling_rights_t{0}), m_hash(zobrist_t{0}),
+        : m_ep_square(NO_SQUARE), m_crs(castling_rights_t{0}), m_hash(zobrist_t{0}),
           m_taken(NO_PIECE)
     {
     }
-    explicit state_t(std::unique_ptr<state_t> prev)
+    explicit state_t(const state_t* prev)
         : m_ep_square(NO_SQUARE), m_crs(prev->m_crs), m_hash(prev->m_hash), m_taken(NO_PIECE)
     {
-        m_previous = std::move(prev);
     }
-    std::unique_ptr<state_t> m_previous;
     square_t                 m_ep_square;
     all_colors<bitboard_t>   m_checkers{};
     all_colors<bitboard_t>   m_blockers{};
@@ -44,8 +42,11 @@ class position_t
     all_colors<all_piece_types<bitboard_t>> m_pieces_occupancy{};
     all_colors<bitboard_t>                  m_color_occupancy{};
     bitboard_t                              m_global_occupancy{};
-    std::unique_ptr<state_t>                m_state;
     color_t                                 m_color{};
+    int m_state_idx = 0;
+    state_t*                m_state;
+    std::array<state_t, 256> m_states;
+
 
     [[nodiscard]] std::span<const piece_t> pieces() const { return m_pieces; }
     [[nodiscard]] piece_t                  piece_at(const square_t sq) const { return m_pieces.at(sq); }
@@ -282,7 +283,8 @@ inline void position_t::from_fen(const std::string_view fen)
     m_color_occupancy.fill(bb::empty);
     m_global_occupancy = bb::empty;
     m_pieces_occupancy.fill(all_piece_types<bitboard_t>{});
-    m_state = std::make_unique<state_t>();
+    m_states.at(0) = state_t();
+    m_state = &m_states.at(0);
 
     std::istringstream iss{std::string(fen)};
     std::string        board, color, castling, ep;
@@ -427,7 +429,8 @@ inline bool position_t::is_legal(const move_t move) const
 
 inline void position_t::do_move(const move_t move)
 {
-    m_state = std::make_unique<state_t>(std::move(m_state));
+    m_states.at(++m_state_idx) = state_t(m_state);
+    m_state = &m_states.at(m_state_idx);
 
     const square_t     from     = move.from_sq();
     const square_t     to       = move.to_sq();
@@ -501,7 +504,7 @@ inline void position_t::undo_move(const move_t move)
 {
 
     const piece_t taken = m_state->m_taken;
-    m_state             = std::move(m_state->m_previous);
+    m_state = &m_states.at(--m_state_idx);
     m_color             = ~m_color;
 
     const square_t     from      = move.from_sq();
