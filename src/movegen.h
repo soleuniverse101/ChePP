@@ -209,12 +209,19 @@ template <color_t c>
 void gen_legal(const position_t& pos, move_list_t& list)
 {
 
-    gen_pawn_moves<c>(pos, list);
-    gen_pc_moves<BISHOP, c>(pos, list);
-    gen_pc_moves<KNIGHT, c>(pos, list);
-    gen_pc_moves<ROOK, c>(pos, list);
-    gen_pc_moves<QUEEN, c>(pos, list);
-    gen_king_moves<c>(pos, list);
+    if (popcount(pos.checkers(c)) == 2)
+    {
+        gen_king_moves<c>(pos, list);
+    }
+    else
+    {
+        gen_pawn_moves<c>(pos, list);
+        gen_pc_moves<BISHOP, c>(pos, list);
+        gen_pc_moves<KNIGHT, c>(pos, list);
+        gen_pc_moves<ROOK, c>(pos, list);
+        gen_pc_moves<QUEEN, c>(pos, list);
+        gen_king_moves<c>(pos, list);
+    }
     size_t idx = 0;
     for (size_t i = 0; i < list.size(); ++i)
     {
