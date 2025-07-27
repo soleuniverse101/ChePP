@@ -24,6 +24,12 @@ void perft(position_t& pos, const int ply, size_t& out)
     if (ply == 0)
     {
         out += l.size();
+        for (size_t i = 0; i < l.size(); i++)
+        {
+            const auto mv = l[i];
+            std::cout << pos;
+            std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
+        }
         return;
     }
     for (size_t i = 0; i < l.size(); i++)
@@ -50,14 +56,16 @@ int main()
 
     position_t pos;
 
-    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    //pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+     pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    pos.from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1");
     //pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
     std::cout << pos;
     std::cout << " START PERFT " << std::endl;
     size_t     out   = 0;
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-    const int depth = 6;
+    const int depth = 2;
     for (int i = 0; i < 1; i++)
     {    perft(pos, depth - 1, out);
 

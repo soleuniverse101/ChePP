@@ -380,7 +380,7 @@ inline std::string position_t::to_string() const
 }
 
 template <color_t c>
-inline bool position_t::is_legal(const move_t move) const
+bool position_t::is_legal(const move_t move) const
 {
     constexpr direction_t down    = c == WHITE ? SOUTH : NORTH;
     const bitboard_t      from_bb = bb::sq_mask(move.from_sq());
@@ -389,6 +389,13 @@ inline bool position_t::is_legal(const move_t move) const
     const auto            ksq     = static_cast<square_t>(get_lsb(pieces_occupancy(c, KING)));
     if (pt == KING)
     {
+        bitboard_t long_range = checkers(c) & (pieces_bb(~c, ROOK) | pieces_occupancy(~c, BISHOP) | pieces_occupancy(~c, QUEEN));
+        while (long_range)
+        {
+            if (const auto sq = static_cast<square_t>(pop_lsb(long_range)); (bb::line(sq, move.to_sq()) == bb::line(sq, move.from_sq())) && move.to_sq() != sq){
+                return false;
+            }
+        }
         if (attacking_sq_bb(move.to_sq()) & color_occupancy(~c))
         {
             return false;

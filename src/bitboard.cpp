@@ -27,15 +27,18 @@ void init_from_to()
                 g_lines.at(sq1).at(sq2) = attacks<ROOK>(sq1) & attacks<ROOK>(sq2);
                 g_from_to.at(sq1).at(sq2) =
                     attacks<ROOK>(sq1, sq_mask(sq2)) & attacks<ROOK>(sq2, sq_mask(sq1));
+                g_lines.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
+                g_from_to.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
             }
             if (attacks<BISHOP>(sq1) & sq_mask(sq2))
             {
                 g_lines.at(sq1).at(sq2) = attacks<BISHOP>(sq1) & attacks<BISHOP>(sq2);
                 g_from_to.at(sq1).at(sq2) =
                     attacks<BISHOP>(sq1, sq_mask(sq2)) & attacks<BISHOP>(sq2, sq_mask(sq1));
+                g_lines.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
+                g_from_to.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
             }
-            g_lines.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
-            g_from_to.at(sq1).at(sq2) |= (sq_mask(sq1) | sq_mask(sq2));
+
         }
     }
 }

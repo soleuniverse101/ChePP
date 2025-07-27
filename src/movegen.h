@@ -39,6 +39,13 @@ struct move_list_t
     size_t                       end;
 };
 
+inline void make_all_promotions(move_list_t& list, square_t from, square_t to)
+{
+    list.add(move_t::make<PROMOTION>(from, to, QUEEN));
+    list.add(move_t::make<PROMOTION>(from, to, ROOK));
+    list.add(move_t::make<PROMOTION>(from, to, BISHOP));
+    list.add(move_t::make<PROMOTION>(from, to, KNIGHT));
+}
 template <color_t c>
 void gen_pawn_moves(const position_t& pos, move_list_t& list)
 {
@@ -79,19 +86,21 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
         while (push)
         {
             const auto sq = static_cast<square_t>(pop_lsb(push));
-            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - static_cast<int>(up)), sq, QUEEN));
+            make_all_promotions(list, static_cast<square_t>(sq - static_cast<int>(up)), sq);
+
         }
         bitboard_t take_right = bb::shift<up_right>(promotions) & enemy & check_mask;
         while (take_right)
         {
             const auto sq = static_cast<square_t>(pop_lsb(take_right));
-            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up + right)), sq, QUEEN));
+            make_all_promotions(list, static_cast<square_t>(sq - (up + right)), sq);
+
         }
         bitboard_t take_left = bb::shift<up_left>(promotions) & enemy & check_mask;
         while (take_left)
         {
             const auto sq = static_cast<square_t>(pop_lsb(take_left));
-            list.add(move_t::make<PROMOTION>(static_cast<square_t>(sq - (up - right)), sq, QUEEN));
+            make_all_promotions(list, static_cast<square_t>(sq - (up - right)), sq);
         }
     }
     // capture
