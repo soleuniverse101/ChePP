@@ -218,9 +218,8 @@ template <color_t c>
 void gen_legal(const position_t& pos, move_list_t& list)
 {
     //std::cout << bb::string(pos.checkers(c));
-    //std::cout << bb::string(pos.blockers(c));
-    //std::cout << bb::string(pos.check_mask(c));
-
+    // std::cout << bb::string(pos.blockers(c));
+    // std::cout << bb::string(pos.check_mask(c));
 
     if (popcount(pos.checkers(c)) == 2)
     {
@@ -238,15 +237,33 @@ void gen_legal(const position_t& pos, move_list_t& list)
     size_t idx = 0;
     for (size_t i = 0; i < list.size(); ++i)
     {
-        move_t mv = list[i];
-        //std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << ": " << '\n';
         if (pos.is_legal<c>(list[i]))
         {
             list[idx++] = list[i];
-
         }
     }
     list.shrink(list.size() - idx);
+}
+
+inline void perft(position_t& pos, const int ply, size_t& out) {
+    move_list_t l;
+    if (pos.color() == WHITE)
+        gen_legal<WHITE>(pos, l);
+    else
+        gen_legal<BLACK>(pos, l);
+
+    if (ply == 1)
+    {
+        out += l.size();
+        return;
+    }
+
+    for (size_t i = 0; i < l.size(); ++i) {
+        const auto mv = l[i];
+        pos.do_move(mv);
+        perft(pos, ply - 1, out);
+        pos.undo_move(mv);
+    }
 }
 
 #endif

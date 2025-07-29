@@ -40,7 +40,7 @@ class position_t
     bitboard_t                              m_global_occupancy{};
     color_t                                 m_color{};
     int                                     m_state_idx = 0;
-    state_t*                                m_state;
+    state_t*                                m_state{};
     std::array<state_t, 256>                m_states;
 
     [[nodiscard]] std::span<const piece_t> pieces() const { return m_pieces; }
@@ -451,7 +451,6 @@ inline void position_t::do_move(const move_t move)
 
     const square_t     from     = move.from_sq();
     const square_t     to       = move.to_sq();
-    const piece_t      pc       = piece_at(from);
     const piece_type_t pt       = piece_type_at(from);
     const color_t      c        = color();
     m_color                     = ~m_color;
@@ -526,7 +525,6 @@ inline void position_t::undo_move(const move_t move)
 
     const square_t     from      = move.from_sq();
     const square_t     to        = move.to_sq();
-    const piece_t      pc        = piece_at(to);
     const piece_type_t pt        = piece_type_at(to);
     const color_t      c         = color();
     const direction_t  up        = c == WHITE ? NORTH : SOUTH;

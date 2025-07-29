@@ -3,7 +3,6 @@
 
 #include "types.h"
 
-
 // XOR shift algo, need to check exactly what it does, just use for now
 // http://vigna.di.unimi.it/ftp/papers/xorshift.pdf
 class PRNG {

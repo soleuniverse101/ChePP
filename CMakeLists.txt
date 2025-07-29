@@ -9,4 +9,4 @@ add_compile_options(-O3 -march=native -Wall)
 add_subdirectory(src)
 
 enable_testing()
-add_subdirectory(tests)
+add_subdirectory(gtests)

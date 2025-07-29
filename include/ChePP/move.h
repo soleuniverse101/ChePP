@@ -4,9 +4,8 @@
 
 #ifndef MOVE_H
 #define MOVE_H
-#include "types.h"
 #include "castle.h"
-
+#include "types.h"
 
 enum move_type_t
 {

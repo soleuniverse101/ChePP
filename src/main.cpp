@@ -1,30 +1,8 @@
-#include "bitboard.h"
-#include "position.h"
-#include "movegen.h"
+#include "ChePP/bitboard.h"
+#include "ChePP/movegen.h"
+#include "ChePP/position.h"
 #include <chrono>
 #include <iostream>
-
-
-void perft(position_t& pos, const int ply, size_t& out) {
-    move_list_t l;
-    if (pos.color() == WHITE)
-        gen_legal<WHITE>(pos, l);
-    else
-        gen_legal<BLACK>(pos, l);
-
-    if (ply == 1)
-    {
-        out += l.size();
-        return;
-    }
-
-    for (size_t i = 0; i < l.size(); ++i) {
-        const auto mv = l[i];
-        pos.do_move(mv);
-        perft(pos, ply - 1, out);
-        pos.undo_move(mv);
-    }
-}
 
 void perft_divide(position_t& pos, int depth) {
     move_list_t l;
@@ -60,7 +38,7 @@ int main()
     position_t pos;
 
     pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-     //pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+     pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
     //pos.from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1");
     //pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
     //pos.from_fen("8/3K4/2p5/p2b2r1/5k2/8/8/1q6 b - 1 67");
@@ -79,6 +57,9 @@ int main()
     pos.from_fen("8/7p/p5pb/4k3/P1pPn3/8/P5PP/1rB2RK1 b - d3 0 28");
     pos.from_fen("rnbqkb1r/ppppp1pp/7n/4Pp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3");
     pos.from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -");
+    pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
 
 
 
@@ -88,8 +69,8 @@ int main()
     size_t     out   = 0;
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-    const int depth = 7;
-     perft_divide(pos, depth);
+    const int depth = 6;
+     perft(pos, depth, out);
 
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff = end - start;
@@ -98,5 +79,15 @@ int main()
     std::cout << "perft " << out << std::endl;
 
     std::cout << "HELLO"<< std::endl;
+
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    for (int d = 1; d<=1; d++)
+    {
+        constexpr uint64_t expected[] = {0ULL, 20ULL, 400ULL, 8902ULL, 197281ULL, 4865609ULL, 119060324ULL};
+        out = 0;
+        perft(pos, d, out);
+        perft(pos, d, out);
+        std::cout << out << std::endl;
+    }
 
 }

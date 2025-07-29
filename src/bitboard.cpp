@@ -1,5 +1,4 @@
-#include "bitboard.h"
-#include "cstring"
+#include "ChePP/bitboard.h"
 
 #include <random>
 #include <sstream>
