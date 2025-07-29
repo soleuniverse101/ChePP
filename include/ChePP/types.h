@@ -22,6 +22,10 @@ enum square_t : int8_t {
   NB_SQUARES
 };
 
+inline int mirror_sq(const int sq) {
+    return (7 - (sq / 8)) * 8 + (sq % 8);
+}
+
 template <typename T>
 using all_squares = std::array<T, NB_SQUARES>;
 // clang-format on
@@ -85,6 +89,28 @@ typedef enum piece_type_t : int8_t
     NB_PIECE_TYPES
 } piece_type_t;
 
+inline int piece_value(const piece_type_t p)
+{
+    switch (p)
+    {
+        case PAWN:
+            return 100;
+        case KNIGHT:
+            return 300;
+        case BISHOP:
+            return 325;
+        case ROOK:
+            return 500;
+        case QUEEN:
+            return 900;
+        case KING:
+            return 10000;
+        default:
+            return 0;
+    }
+}
+
+
 template <typename T>
 using all_piece_types = std::array<T, NB_PIECE_TYPES>;
 
@@ -127,6 +153,8 @@ enum piece_t : int8_t
     NB_PIECES
 };
 
+
+
 constexpr piece_type_t piece_piece_type(const piece_t pc)
 {
     return static_cast<piece_type_t>(static_cast<int8_t>(pc) % NB_PIECE_TYPES);
@@ -141,6 +169,13 @@ constexpr piece_t piece(const piece_type_t pc, const color_t c)
 {
     return static_cast<piece_t>(static_cast<int8_t>(pc)  + NB_PIECE_TYPES * static_cast<int8_t>(c));
 }
+
+
+inline int piece_value(const piece_t p)
+{
+    return piece_piece_type(p);
+}
+
 
 
 constexpr piece_t p = piece(ROOK, WHITE);

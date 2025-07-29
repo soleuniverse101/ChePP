@@ -10,34 +10,55 @@
 
 struct move_list_t
 {
-    move_list_t() : end(0) {}
     static constexpr size_t max_moves = 256;
-    void                    add(const move_t m)
+
+    move_list_t() : m_size(0) {}
+
+    void add(const move_t& m)
     {
-        assert(end < max_moves && "move_list_t overflow");
-        moves[end++] = m;
+        assert(m_size < max_moves && "move_list_t overflow");
+        m_moves[m_size++] = m;
     }
+    void push_back(const move_t& m) { add(m); }
 
     const move_t& operator[](const size_t index) const
     {
-        assert(index < end);
-        return moves[index];
+        assert(index < m_size);
+        return m_moves[index];
+    }
+    move_t& operator[](const size_t index)
+    {
+        assert(index < m_size);
+        return m_moves[index];
     }
 
-    move_t& operator[](const size_t index) {
-        assert(index < end);
-        return moves[index];
+    void clear() { m_size = 0; }
+
+    void shrink(const size_t n)
+    {
+        assert(n <= m_size);
+        m_size -= n;
     }
 
-    void clear() { end = 0; }
+    [[nodiscard]] size_t size() const { return m_size; }
 
-    void shrink(const size_t n) {end -= n;}
+    [[nodiscard]] static constexpr size_t capacity() { return max_moves; }
 
-    [[nodiscard]] size_t size() const { return end; }
+    [[nodiscard]] bool empty() const { return m_size == 0; }
 
-    std::array<move_t, max_moves> moves;
-    size_t                       end;
+    move_t* begin() { return m_moves.data(); }
+    move_t* end() { return m_moves.data() + m_size; }
+    [[nodiscard]] const move_t* begin() const { return m_moves.data(); }
+    [[nodiscard]] const move_t* end() const { return m_moves.data() + m_size; }
+    [[nodiscard]] const move_t* cbegin() const { return m_moves.data(); }
+    [[nodiscard]] const move_t* cend() const { return m_moves.data() + m_size; }
+
+private:
+    std::array<move_t, max_moves> m_moves;
+    size_t m_size;
 };
+
+
 
 inline void make_all_promotions(move_list_t& list, square_t from, square_t to)
 {

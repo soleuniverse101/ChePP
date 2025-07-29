@@ -226,8 +226,8 @@ inline void position_t::move_piece(const piece_t piece, const square_t from, con
 inline void position_t::init_state() const
 {
     m_state->m_hash = zobrist_t(*this);
-    update_checkers(color());
-    update_checkers(~color());
+    update_checkers(WHITE);
+    update_checkers(BLACK);
 }
 
 inline piece_type_t piece_type_from_char(const char c)
