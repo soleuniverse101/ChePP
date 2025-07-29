@@ -240,5 +240,26 @@ namespace Bitboard
             return pseudo_attack<pc>(sq, c);
         }
     }
+    constexpr bitboard_t attacks(const piece_type_t pt, const square_t sq, const bitboard_t occupancy = empty, const color_t c = WHITE)
+    {
+        switch (pt)
+        {
+            case (PAWN):
+                return attacks<PAWN>(sq, occupancy, c);
+            case (KNIGHT):
+                return attacks<KNIGHT>(sq, occupancy, c);
+            case (BISHOP):
+                return attacks<BISHOP>(sq, occupancy, c);
+            case (ROOK):
+                return attacks<ROOK>(sq, occupancy, c);
+            case (QUEEN):
+                return attacks<QUEEN>(sq, occupancy, c);
+            case (KING):
+                return attacks<KING>(sq, occupancy, c);
+            default:
+                assert(0 && "invalie piece type");
+                return bb::empty;
+        }
+    }
 } // namespace Bitboard
 #endif

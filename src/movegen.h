@@ -217,6 +217,10 @@ void gen_king_moves(const position_t& pos, move_list_t& list)
 template <color_t c>
 void gen_legal(const position_t& pos, move_list_t& list)
 {
+    //std::cout << bb::string(pos.checkers(c));
+    //std::cout << bb::string(pos.blockers(c));
+    //std::cout << bb::string(pos.check_mask(c));
+
 
     if (popcount(pos.checkers(c)) == 2)
     {
@@ -234,6 +238,8 @@ void gen_legal(const position_t& pos, move_list_t& list)
     size_t idx = 0;
     for (size_t i = 0; i < list.size(); ++i)
     {
+        move_t mv = list[i];
+        //std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << ": " << '\n';
         if (pos.is_legal<c>(list[i]))
         {
             list[idx++] = list[i];

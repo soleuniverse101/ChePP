@@ -5,49 +5,52 @@
 #include <iostream>
 
 
-void perft(position_t& pos, const int ply, size_t& out)
-{
+void perft(position_t& pos, const int ply, size_t& out) {
     move_list_t l;
     if (pos.color() == WHITE)
-    {
         gen_legal<WHITE>(pos, l);
-
-    } else
-    {
+    else
         gen_legal<BLACK>(pos, l);
 
-    }
-    if (l.size() == 0)
-    {
-        //std::cout << pos;
-    }
-    if (ply == 0)
+    if (ply == 1)
     {
         out += l.size();
-        for (size_t i = 0; i < l.size(); i++)
-        {
-            const auto mv = l[i];
-            std::cout << pos;
-            std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
-        }
         return;
     }
-    for (size_t i = 0; i < l.size(); i++)
-    {
+
+    for (size_t i = 0; i < l.size(); ++i) {
         const auto mv = l[i];
-        //std::cout << pos;
-        //std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
-        //std::cout << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << " " << (static_cast<int>(mv.type_of()) >> 14) <<  std::endl;
-
         pos.do_move(mv);
-        //std::cout << pos;
-
-            perft(pos, ply - 1, out);
-
+        perft(pos, ply - 1, out);
         pos.undo_move(mv);
     }
-
 }
+
+void perft_divide(position_t& pos, int depth) {
+    move_list_t l;
+    if (pos.color() == WHITE)
+        gen_legal<WHITE>(pos, l);
+    else
+        gen_legal<BLACK>(pos, l);
+
+    size_t total = 0;
+
+    for (size_t i = 0; i < l.size(); ++i) {
+        const auto mv = l[i];
+        pos.do_move(mv);
+
+        size_t nodes = 0;
+        perft(pos, depth - 1, nodes);
+
+        pos.undo_move(mv);
+
+        std::cout << piece_to_char(pos.piece_at(mv.from_sq())) << " " << square_to_string(mv.from_sq()) << " " << square_to_string(mv.to_sq()) << ": " << nodes << '\n';
+        total += nodes;
+    }
+
+    std::cout << "Total: " << total << '\n';
+}
+
 
 int main()
 {
@@ -56,20 +59,28 @@ int main()
 
     position_t pos;
 
-    //pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-     pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-    pos.from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1");
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+     //pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    //pos.from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1");
     //pos.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
+    //pos.from_fen("8/3K4/2p5/p2b2r1/5k2/8/8/1q6 b - 1 67");
+    //pos.from_fen("8/7p/p5pb/4k3/P1pPn3/8/P5PP/1rB2RK1 b - d3 0 28");
+    //pos.from_fen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 ");
+    //pos.from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1");
+    //pos.do_move(move_t::make<NORMAL>(D7, C6));
+//pos.do_move(move_t::make<PROMOTION>(B7, A8, ROOK));
+
+
+
+
     std::cout << pos;
     std::cout << " START PERFT " << std::endl;
     size_t     out   = 0;
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-    const int depth = 2;
-    for (int i = 0; i < 1; i++)
-    {    perft(pos, depth - 1, out);
+    const int depth = 7;
+     perft_divide(pos, depth);
 
-    }
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff = end - start;
 
