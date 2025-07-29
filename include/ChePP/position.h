@@ -446,8 +446,11 @@ bool position_t::is_legal(const move_t move) const
 
 inline void position_t::do_move(const move_t move)
 {
+
     m_states.at(++m_state_idx) = state_t(m_state);
     m_state                    = &m_states.at(m_state_idx);
+    m_state->m_hash.play_move(move, *this);
+
 
     const square_t     from     = move.from_sq();
     const square_t     to       = move.to_sq();

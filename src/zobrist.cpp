@@ -32,7 +32,6 @@ void zobrist_t::init(const std::uint64_t seed)
 }
 
 // to be called before the move is reflected on the board
-template <move_type_t move_type>
 void zobrist_t::play_move(const move_t move, const position_t& pos)
 {
     m_hash ^= s_side;                   // change color
@@ -49,13 +48,14 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     const piece_type_t pt = pos.piece_type_at(from);
     const color_t     color = pos.color();
     const direction_t up    = pos.color() == WHITE ? NORTH : SOUTH;
+    const move_type_t move_type = move.type_of();
     // are we losing castling rights?
-    if (const uint8_t lost = castling_rights_t::lost_by_moving_from(from) & pos.crs().mask()) [[unlikely]]
+    if (const uint8_t lost = (castling_rights_t::lost_by_moving_from(from) | castling_rights_t::lost_by_moving_from(to)) & pos.crs().mask()) [[unlikely]]
     {
         flip_castling_rights(lost);
     }
     //are we castling?
-    if constexpr (move_type == CASTLING)
+    if  (move_type == CASTLING)
     {
         const auto castling_type = move.castling_type();
         auto [k_from, k_to]                 = castling_rights_t::king_move(castling_type);
@@ -67,7 +67,7 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     }
 
     move_piece(pc, from, to);
-    if constexpr (move_type == NORMAL)
+    if  (move_type == NORMAL)
     {
         // capture
         if (pos.is_occupied(to))
@@ -80,12 +80,12 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
             m_hash ^= s_ep.at(fl_of(to));
         }
     }
-    if constexpr (move_type == EN_PASSANT)
+    if  (move_type == EN_PASSANT)
     {
         // remove ep pawn
         flip_piece(piece(PAWN, ~color), static_cast<square_t>(static_cast<int>(to) - up));
     }
-    if constexpr (move_type == PROMOTION)
+    if  (move_type == PROMOTION)
     {
         //remove pawn add promoted type
         promote_piece(pos.color(), move.promotion_type(), move.to_sq());

@@ -250,6 +250,8 @@ constexpr int pop_lsb(T& bb) noexcept
     return n;
 }
 
+constexpr int MATE_SCORE = 100000;
+constexpr int INFINITE = 1000000;
 
 
 #endif

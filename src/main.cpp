@@ -2,6 +2,7 @@
 #include "ChePP/movegen.h"
 #include "ChePP/position.h"
 #include "ChePP/search.h"
+
 #include <chrono>
 #include <iostream>
 
@@ -39,8 +40,8 @@ int main()
     position_t pos;
 
     pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
-    pos.from_fen("k7/8/2R5/8/2K5/8/8/8 w - - 0 1");
-    pos.from_fen("r1bq1rk1/pp3ppp/2n1pn2/2bp4/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 10");
+    //pos.from_fen("k7/8/2R5/8/2K5/8/8/8 w - - 0 1");
+    //pos.from_fen("r1bq1rk1/pp3ppp/2n1pn2/2bp4/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 10");
     std::cout << pos;
 
 

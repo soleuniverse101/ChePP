@@ -26,7 +26,6 @@ public:
 
     [[nodiscard]] hash_t value() const { return m_hash; }
 
-    template <move_type_t move_type>
     void play_move(move_t move, const position_t& pos);
 
 

@@ -14,6 +14,8 @@
 inline int score_move(const move_t& m, const position_t& pos) {
     const auto captured = pos.piece_at(m.to_sq());
     const auto attacker = pos.piece_at(m.from_sq());
+    const auto from_attackers = pos.attacking_sq_bb(m.from_sq()) & pos.color_occupancy(~pos.color());
+    const auto to_attackers = pos.attacking_sq_bb(m.to_sq()) & pos.color_occupancy(~pos.color());
 
     int score = 0;
 
@@ -25,9 +27,33 @@ inline int score_move(const move_t& m, const position_t& pos) {
         score += 8'000 + piece_value(static_cast<piece_t>(m.promotion_type()));
     }
 
-    if (m.type_of() == CASTLING)
-    {
-        score += 100'000;
+
+    const int attacker_val = piece_value(attacker);
+
+    if (from_attackers) {
+        int min_enemy_val = 10000;
+        bitboard_t b = from_attackers;
+        while (b) {
+            square_t sq = static_cast<square_t>(pop_lsb(b));
+            piece_t p = pos.piece_at(sq);
+            min_enemy_val = std::min(min_enemy_val, piece_value(p));
+        }
+        int diff = attacker_val - min_enemy_val;
+        if (diff < 0) diff = 0;
+        score += 5 * diff;
+    }
+
+    if (to_attackers) {
+        int min_enemy_val = 10000;
+        bitboard_t b = to_attackers;
+        while (b) {
+            square_t sq = static_cast<square_t>(pop_lsb(b));
+            piece_t p = pos.piece_at(sq);
+            min_enemy_val = std::min(min_enemy_val, piece_value(p));
+        }
+        int diff = min_enemy_val - attacker_val;
+        if (diff < 0) diff = 0;
+        score -= 7 * diff;
     }
 
     return score;

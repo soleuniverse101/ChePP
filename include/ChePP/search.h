@@ -8,20 +8,18 @@
 #include "eval.h"
 #include "move_ordering.h"
 
-constexpr int MATE_SCORE = 100000;
-constexpr int INFINITE = 1000000;
+
 
 template <color_t c>
-int minimax(position_t& pos, int depth, int alpha, int beta) {
+int minimax(position_t& pos, int depth, int alpha, int beta, int& searched) {
     constexpr auto opponent = ~c;
+
 
     move_list_t moves;
     gen_legal<c>(pos, moves);
     order_moves(pos, moves);
 
     if (moves.size() == 0) {
-
-
         if (pos.checkers(c) != bb::empty) {
             return -(MATE_SCORE + depth);
         }
@@ -33,19 +31,26 @@ int minimax(position_t& pos, int depth, int alpha, int beta) {
     }
 
     int bestEval = -INFINITE;
+    move_t best_move = move_t::null();
 
     for (const auto m : moves) {
         pos.do_move(m);
-        int eval = -minimax<opponent>(pos, depth - 1, -beta, -alpha);
+        int eval = -minimax<opponent>(pos, depth - 1, -beta, -alpha, searched);
         pos.undo_move(m);
 
+        if (eval > bestEval)
+        {
+            best_move = m;
+        }
         bestEval = std::max(bestEval, eval);
         alpha = std::max(alpha, eval);
+        searched++;
 
         if (alpha >= beta) {
             break;
         }
     }
+
 
     return bestEval;
 }
@@ -63,11 +68,13 @@ move_t find_best_move(position_t& pos, int depth) {
     int best_eval = -INT32_MAX;
     int alpha = -INT32_MAX;
     int beta = INT32_MAX;
+    int searched = 0;
 
     for (int i = 0; i < moves.size(); ++i) {
+        searched ++;
         const auto m = moves[i];
         pos.do_move(m);
-        int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha);
+        int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha, searched);
         pos.undo_move(m);
 
         if (eval > best_eval) {
@@ -78,6 +85,7 @@ move_t find_best_move(position_t& pos, int depth) {
         alpha = std::max(alpha, eval);
     }
     std::cout << best_eval << std::endl;
+    std::cout << searched << std::endl;
 
     return best_move;
 }
