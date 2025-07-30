@@ -18,6 +18,10 @@ struct tt_entry_t
         : m_hash(hash), m_depth(depth), m_score(score), m_generation(generation)
     {
     }
+    [[nodiscard]] int ply() const
+    {
+        return m_generation + m_depth;
+    }
     hash_t  m_hash;
     int m_depth;
     int m_score;
@@ -44,7 +48,7 @@ struct tt_t
     std::optional<tt_entry_t> probe(const hash_t hash, const int depth) const
     {
         const tt_entry_t& cur = m_table[index(hash)];
-        if (cur.m_hash == hash && cur.m_depth >= depth && cur.m_generation == m_generation)
+        if (cur.m_hash == hash && cur.ply() >= ply(depth))
         {
             return cur;
         }
@@ -55,7 +59,7 @@ struct tt_t
     {
         const auto  entry = tt_entry_t(hash, depth, score, m_generation);
         tt_entry_t& cur = m_table[index(entry.m_hash)];
-        if (cur.m_hash != entry.m_hash || cur.m_depth < entry.m_depth || cur.m_generation != entry.m_generation)
+        if (cur.m_hash != entry.m_hash || cur.ply() < entry.ply())
         {
             cur = entry;
         }
@@ -67,6 +71,10 @@ struct tt_t
     }
 
 private:
+    int ply(const int depth) const
+    {
+        return m_generation + depth;
+    }
     size_t index(const hash_t hash) const
     {
         return hash & (m_size - 1);

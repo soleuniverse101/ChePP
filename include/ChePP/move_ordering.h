@@ -11,7 +11,10 @@
 
 
 
-inline int score_move(const move_t& m, const position_t& pos) {
+inline int score_move(const move_t& m, const position_t& pos, const move_t prev_best) {
+    if (m == prev_best) {
+        return 100'000;
+    }
     const auto captured = pos.piece_at(m.to_sq());
     const auto attacker = pos.piece_at(m.from_sq());
     const auto from_attackers = pos.attacking_sq_bb(m.from_sq()) & pos.color_occupancy(~pos.color());
@@ -27,6 +30,9 @@ inline int score_move(const move_t& m, const position_t& pos) {
         score += 8'000 + piece_value(static_cast<piece_t>(m.promotion_type()));
     }
 
+    if (m.type_of() == CASTLING) {
+        score += 20'000;
+    }
 
     const int attacker_val = piece_value(attacker);
 
@@ -59,12 +65,12 @@ inline int score_move(const move_t& m, const position_t& pos) {
     return score;
 }
 
-inline void order_moves(const position_t& pos, move_list_t& list) {
+inline void order_moves(const position_t& pos, move_list_t& list, const move_t prev_best = move_t::null()) {
     std::vector<std::pair<int, move_t>> scored;
     scored.reserve(list.size());
 
     for (const auto& m : list) {
-        scored.emplace_back(score_move(m, pos), m);
+        scored.emplace_back(score_move(m, pos, prev_best), m);
     }
 
     std::ranges::sort(scored, [](auto& a, auto& b) {

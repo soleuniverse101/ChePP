@@ -73,38 +73,58 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
 
 
 template <color_t c>
-move_t find_best_move(position_t& pos, int depth) {
-    move_list_t moves;
-    gen_legal<c>(pos, moves);
-    order_moves(pos, moves);
-
-
+move_t find_best_move(position_t& pos, int max_depth) {
     move_t best_move = move_t::none();
-    int best_eval = -INT32_MAX;
-    int alpha = -INT32_MAX;
-    int beta = INT32_MAX;
-    int searched = 0;
-    int tt_hits = 0;
 
-    for (int i = 0; i < moves.size(); ++i) {
-        searched ++;
-        const auto m = moves[i];
-        pos.do_move(m);
-        int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha, searched, tt_hits);
-        pos.undo_move(m);
+    int total_nodes = 0;
+    int total_tt_hits = 0;
 
-        if (eval > best_eval) {
-            best_eval = eval;
-            best_move = m;
+    for (int depth = 1; depth <= max_depth; ++depth) {
+        move_list_t moves;
+        gen_legal<c>(pos, moves);
+        order_moves(pos, moves, best_move);
+
+        int best_eval = -INT32_MAX;
+        int alpha = -INT32_MAX;
+        int beta = INT32_MAX;
+
+        int nodes = 0;
+        int tt_hits = 0;
+
+        move_t current_best = move_t::none();
+
+        for (int i = 0; i < moves.size(); ++i) {
+            const auto m = moves[i];
+            pos.do_move(m);
+
+            int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha, nodes, tt_hits);
+
+            pos.undo_move(m);
+
+            if (eval > best_eval) {
+                best_eval = eval;
+                current_best = m;
+            }
+
+            alpha = std::max(alpha, eval);
         }
 
-        alpha = std::max(alpha, eval);
-    }
-    std::cout << best_eval << std::endl;
-    std::cout << searched << std::endl;
-    std::cout << tt_hits << std::endl;
-    std::cout << static_cast<float>(tt_hits) / searched * 100 << std::endl;
+        if (current_best != move_t::none()) {
+            best_move = current_best;
+        }
 
+        total_nodes += nodes;
+        total_tt_hits += tt_hits;
+
+        std::cout << "Depth: " << depth << ", Eval: " << best_eval
+                  << ", Nodes: " << nodes
+                  << ", TT hits: " << tt_hits
+                  << ", Hit Rate: " << static_cast<float>(tt_hits) / nodes * 100.0f << " %\n";
+    }
+
+    std::cout << "Total Nodes: " << total_nodes << "\n";
+    std::cout << "Total TT Hits: " << total_tt_hits << "\n";
+    std::cout << "Overall Hit Rate: " << static_cast<float>(total_tt_hits) / total_nodes * 100.0f << " %\n";
 
     return best_move;
 }
