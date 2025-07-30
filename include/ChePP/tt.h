@@ -14,14 +14,19 @@ struct tt_entry_t
 {
 
     tt_entry_t() noexcept = default;
-    tt_entry_t(const hash_t hash, const int depth, const int score) : m_hash(hash), m_depth(depth), m_score(score) {}
+    tt_entry_t(const hash_t hash, const int depth, const int score, const int generation)
+        : m_hash(hash), m_depth(depth), m_score(score), m_generation(generation)
+    {
+    }
     hash_t  m_hash;
     int m_depth;
     int m_score;
+
+    int m_generation;
 };
 
 
-inline uint64_t floor_power_of_two(uint64_t x) {
+inline uint64_t floor_power_of_two(const uint64_t x) {
     if (x == 0) return 0;
     return 1ULL << (63 - __builtin_clzll(x));
 }
@@ -32,26 +37,33 @@ struct tt_t
     void init (const size_t mb)
     {
         m_size = floor_power_of_two(mb * 1024 * 1024);
+        m_generation = 0;
         m_table = std::make_unique<tt_entry_t[]>(m_size);
     }
 
     std::optional<tt_entry_t> probe(const hash_t hash, const int depth) const
     {
         const tt_entry_t& cur = m_table[index(hash)];
-        if (cur.m_hash == hash && cur.m_depth >= depth)
+        if (cur.m_hash == hash && cur.m_depth >= depth && cur.m_generation == m_generation)
         {
             return cur;
         }
         return std::nullopt;
     }
 
-    void store(const tt_entry_t entry)
+    void store(const hash_t hash, const int depth, const int score)
     {
+        const auto  entry = tt_entry_t(hash, depth, score, m_generation);
         tt_entry_t& cur = m_table[index(entry.m_hash)];
-        if (cur.m_hash != entry.m_hash || cur.m_depth < entry.m_depth)
+        if (cur.m_hash != entry.m_hash || cur.m_depth < entry.m_depth || cur.m_generation != entry.m_generation)
         {
-             cur = entry;
+            cur = entry;
         }
+    }
+
+    void new_generation()
+    {
+        m_generation++;
     }
 
 private:
@@ -60,6 +72,7 @@ private:
         return hash & (m_size - 1);
     }
 
+    int m_generation = 0;
     std::size_t m_size = 0;
     std::unique_ptr<tt_entry_t[]> m_table;
 };

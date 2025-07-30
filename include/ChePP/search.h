@@ -15,11 +15,7 @@ template <color_t c>
 int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int& tt_hits) {
     constexpr auto opponent = ~c;
 
-    if (auto entry = g_tt.probe(pos.hash(), depth))
-    {
-        tt_hits++;
-        return entry.value().m_score;
-    }
+
 
     move_list_t moves;
     gen_legal<c>(pos, moves);
@@ -36,6 +32,12 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
     if (pos.is_draw())
     {
         return 0;
+    }
+
+    if (const auto entry = g_tt.probe(pos.hash(), depth))
+    {
+        tt_hits++;
+        return entry.value().m_score;
     }
 
     if (depth == 0) {
@@ -63,7 +65,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
         }
     }
 
-    g_tt.store({pos.hash(), depth, bestEval});
+    g_tt.store(pos.hash(), depth, bestEval);
 
     return bestEval;
 }
@@ -101,6 +103,7 @@ move_t find_best_move(position_t& pos, int depth) {
     std::cout << best_eval << std::endl;
     std::cout << searched << std::endl;
     std::cout << tt_hits << std::endl;
+    std::cout << static_cast<float>(tt_hits) / searched * 100 << std::endl;
 
 
     return best_move;

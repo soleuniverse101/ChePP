@@ -43,19 +43,21 @@ int main()
     position_t pos;
 
     pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
-    //pos.from_fen("k7/8/2R5/8/2K5/8/8/8 w - - 0 1");
+    pos.from_fen("k7/8/B2NK3/8/8/8/8/8 w - - 0 1");
     //pos.from_fen("r1bq1rk1/pp3ppp/2n1pn2/2bp4/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 10");
-    pos.from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+    //pos.from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
     std::cout << pos;
 
 
 
-    for (int i = 0; i < 12; i++)
+    for (int i = 0; i < 30; i++)
     {
-        const auto mv = find_best_move<WHITE>(pos, 7);
+        const auto mv = find_best_move<WHITE>(pos, 20);
+        g_tt.new_generation();
         pos.do_move(mv);
         std::cout << pos;
-        const auto mv2 = find_best_move<BLACK>(pos, 7);
+        const auto mv2 = find_best_move<BLACK>(pos, 20);
+        g_tt.new_generation();
         pos.do_move(mv2);
         std::cout << pos;
     }
