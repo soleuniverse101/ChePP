@@ -21,6 +21,7 @@ class zobrist_t
 public:
     explicit zobrist_t(const position_t& pos);
     explicit zobrist_t(const hash_t hash) : m_hash(hash) {}
+    zobrist_t(const zobrist_t& other) = default;
 
     static void init(std::uint64_t seed);
 
@@ -29,11 +30,9 @@ public:
     void play_move(move_t move, const position_t& pos);
 
 
-private:
     void flip_piece(const piece_t pt, const square_t sq)
     {
         m_hash ^= s_psq.at(pt).at(sq);
-        //m_hash ^= s_psq.at(pt)
     }
     void move_piece(const piece_t pt, const square_t from, const square_t to)
     {
@@ -47,18 +46,27 @@ private:
     }
     void flip_castling_rights(uint8_t mask)
     {
-
+        /**
         while (const int idx = pop_lsb(mask) < NB_CASTLING_TYPES)
         {
             m_hash ^= s_castling.at(idx);
         }
-        /**
+        **/
         for (const auto t : castling_types)
         {
             if (mask & castling_rights_t::mask(t)) m_hash ^= s_castling.at(t);
         }
-        **/
 
+    }
+
+    void flip_ep(const file_t fl)
+    {
+        m_hash ^= s_ep.at(fl);
+    }
+
+    void flip_color()
+    {
+        m_hash ^= s_side;
     }
 
     static all_pieces<all_squares<hash_t>> s_psq;

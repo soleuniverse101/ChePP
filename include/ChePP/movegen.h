@@ -60,7 +60,7 @@ private:
 
 
 
-inline void make_all_promotions(move_list_t& list, square_t from, square_t to)
+inline void make_all_promotions(move_list_t& list, const square_t from, const square_t to)
 {
     list.add(move_t::make<PROMOTION>(from, to, QUEEN));
     list.add(move_t::make<PROMOTION>(from, to, ROOK));
@@ -238,11 +238,9 @@ void gen_king_moves(const position_t& pos, move_list_t& list)
 template <color_t c>
 void gen_legal(const position_t& pos, move_list_t& list)
 {
-    //std::cout << bb::string(pos.checkers(c));
-    // std::cout << bb::string(pos.blockers(c));
-    // std::cout << bb::string(pos.check_mask(c));
-
-    if (popcount(pos.checkers(c)) == 2)
+    const int n_checkers = popcount(pos.checkers(c));
+    assert(n_checkers <= 2);
+    if (n_checkers == 2)
     {
         gen_king_moves<c>(pos, list);
     }
@@ -282,6 +280,7 @@ inline void perft(position_t& pos, const int ply, size_t& out) {
     for (size_t i = 0; i < l.size(); ++i) {
         const auto mv = l[i];
         pos.do_move(mv);
+        //std::cout << mv << std::endl;
         perft(pos, ply - 1, out);
         pos.undo_move(mv);
     }

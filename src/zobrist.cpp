@@ -104,12 +104,11 @@ zb::zobrist_t(const position_t& pos)
     }
     if (pos.ep_square() != NO_SQUARE)
     {
-        std::cout << fl_of(pos.ep_square()) << "\n";
-        m_hash ^= s_ep.at(fl_of(pos.ep_square()));
+        flip_ep(fl_of(pos.ep_square()));
     }
     if (pos.color() == BLACK)
     {
-        m_hash ^= s_side;
+        flip_color();
     }
     flip_castling_rights(~pos.crs().mask());
 }

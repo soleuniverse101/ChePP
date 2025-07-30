@@ -7,22 +7,34 @@
 
 #include "eval.h"
 #include "move_ordering.h"
+#include "tt.h"
 
 
 
 template <color_t c>
-int minimax(position_t& pos, int depth, int alpha, int beta, int& searched) {
+int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int& tt_hits) {
     constexpr auto opponent = ~c;
 
+    if (auto entry = g_tt.probe(pos.hash(), depth))
+    {
+        tt_hits++;
+        return entry.value().m_score;
+    }
 
     move_list_t moves;
     gen_legal<c>(pos, moves);
     order_moves(pos, moves);
 
-    if (moves.size() == 0) {
+
+    if (moves.empty()) {
         if (pos.checkers(c) != bb::empty) {
             return -(MATE_SCORE + depth);
         }
+        return 0;
+    }
+
+    if (pos.is_draw())
+    {
         return 0;
     }
 
@@ -35,7 +47,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched) {
 
     for (const auto m : moves) {
         pos.do_move(m);
-        int eval = -minimax<opponent>(pos, depth - 1, -beta, -alpha, searched);
+        int eval = -minimax<opponent>(pos, depth - 1, -beta, -alpha, searched, tt_hits);
         pos.undo_move(m);
 
         if (eval > bestEval)
@@ -51,6 +63,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched) {
         }
     }
 
+    g_tt.store({pos.hash(), depth, bestEval});
 
     return bestEval;
 }
@@ -69,12 +82,13 @@ move_t find_best_move(position_t& pos, int depth) {
     int alpha = -INT32_MAX;
     int beta = INT32_MAX;
     int searched = 0;
+    int tt_hits = 0;
 
     for (int i = 0; i < moves.size(); ++i) {
         searched ++;
         const auto m = moves[i];
         pos.do_move(m);
-        int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha, searched);
+        int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha, searched, tt_hits);
         pos.undo_move(m);
 
         if (eval > best_eval) {
@@ -86,6 +100,8 @@ move_t find_best_move(position_t& pos, int depth) {
     }
     std::cout << best_eval << std::endl;
     std::cout << searched << std::endl;
+    std::cout << tt_hits << std::endl;
+
 
     return best_move;
 }

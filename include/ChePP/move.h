@@ -90,6 +90,22 @@ static constexpr move_t make(const square_t from, const square_t to,
         return static_cast<castling_type_t>(m_data >> 12 & 0b11);
     }
 
+    [[nodiscard]] constexpr std::string to_string() const
+    {
+        std::ostringstream ss;
+        ss << from_sq() << to_sq();
+        if (type_of() == PROMOTION)
+        {
+            ss << promotion_type();
+        }
+        return ss.str();
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const move_t mv)
+    {
+        return os << mv.to_string();
+    }
+
   private:
     std::uint16_t m_data;
 };

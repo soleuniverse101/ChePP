@@ -57,6 +57,10 @@ namespace Bitboard
     {
         return g_lines.at(from).at(to);
     }
+    inline bool are_aligned(const square_t sq1, const square_t sq2, const square_t sq3)
+    {
+        return line(sq1, sq2) == line(sq2, sq3);
+    }
 
     template <direction_t dir>
     constexpr bitboard_t direction_mask()
@@ -151,8 +155,11 @@ namespace Bitboard
 
     void init();
     std::string string(bitboard_t bb);
+
+
 } // namespace Bitboard
 namespace bb = Bitboard;
+
 
 struct magic_val_t
 {
