@@ -8,6 +8,12 @@
 #include <iostream>
 #include <memory>
 
+enum movegen_type_t
+{
+    ALL,
+    TACTICAL
+};
+
 struct move_list_t
 {
     static constexpr size_t max_moves = 256;
@@ -67,6 +73,7 @@ inline void make_all_promotions(move_list_t& list, const square_t from, const sq
     list.add(move_t::make<PROMOTION>(from, to, BISHOP));
     list.add(move_t::make<PROMOTION>(from, to, KNIGHT));
 }
+
 template <color_t c>
 void gen_pawn_moves(const position_t& pos, move_list_t& list)
 {
@@ -84,11 +91,15 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
     const bitboard_t     enemy             = pos.color_occupancy(~c);
     const bitboard_t     pawns             = pos.pieces_bb(c, PAWN);
     const bitboard_t     ep_bb             = (pos.ep_square() == NO_SQUARE ? bb::empty : bb::sq_mask(pos.ep_square()));
+
+
+
     // straight
     {
         bitboard_t single_push = bb::shift<up>(pawns & ~bb_promotion_rank) & available;
         bitboard_t double_push = bb::shift<up>(single_push & bb_third_rank) & available & check_mask;
         single_push &= check_mask;
+
         while (single_push)
         {
             const auto sq = static_cast<square_t>(pop_lsb(single_push));
@@ -126,7 +137,6 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
     }
     // capture
     {
-
         bitboard_t capturable = enemy | ep_bb;
         bitboard_t ep_mask    = bb::empty;
         if (check_mask & bb::shift<down>(ep_bb))
@@ -167,6 +177,7 @@ void gen_pc_moves(const position_t& pos, move_list_t& list)
 {
     const bitboard_t check_mask = pos.check_mask(c) == bb::empty ? bb::full : pos.check_mask(c);
     bitboard_t       bb         = pos.pieces_occupancy(c, pc);
+
     while (bb)
     {
         auto       from    = static_cast<square_t>(pop_lsb(bb));
@@ -263,6 +274,38 @@ void gen_legal(const position_t& pos, move_list_t& list)
     }
     list.shrink(list.size() - idx);
 }
+
+template <color_t c>
+void gen_tactical(const position_t& pos, move_list_t& list)
+{
+    const int n_checkers = popcount(pos.checkers(c));
+    assert(n_checkers <= 2);
+    if (n_checkers == 2)
+    {
+        gen_king_moves<c>(pos, list);
+    }
+    else
+    {
+        gen_pawn_moves<c>(pos, list);
+        gen_pc_moves<BISHOP, c>(pos, list);
+        gen_pc_moves<KNIGHT, c>(pos, list);
+        gen_pc_moves<ROOK, c>(pos, list);
+        gen_pc_moves<QUEEN, c>(pos, list);
+        gen_king_moves<c>(pos, list);
+    }
+    size_t idx = 0;
+    for (size_t i = 0; i < list.size(); ++i)
+    {
+        move_t mv = list[i];
+        if (pos.is_legal<c>(list[i]) && ( pos.is_occupied(mv.to_sq()) || mv.type_of() == PROMOTION))
+        {
+            list[idx++] = list[i];
+        }
+    }
+    list.shrink(list.size() - idx);
+}
+
+
 
 inline void perft(position_t& pos, const int ply, size_t& out) {
     move_list_t l;

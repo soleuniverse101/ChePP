@@ -9,6 +9,37 @@
 #include "move_ordering.h"
 #include "tt.h"
 
+#include <src/tbprobe.h>
+
+template <color_t c>
+int qsearch(position_t& pos, int alpha, int beta)
+{
+    int stand_pat = evaluate_position<c>(pos);
+    if (stand_pat >= beta)
+        return beta;
+    if (stand_pat > alpha)
+        alpha = stand_pat;
+
+    move_list_t list;
+    gen_tactical<c>(pos, list);
+    //order_moves(pos, list);
+
+    for (size_t i = 0; i < list.size(); ++i)
+    {
+        move_t m = list[i];
+
+        pos.do_move(m);
+        int score = -qsearch<!c>(pos, -beta, -alpha);
+        pos.undo_move(m);
+
+        if (score >= beta)
+            return beta;
+        if (score > alpha)
+            alpha = score;
+    }
+
+    return alpha;
+}
 
 
 template <color_t c>
@@ -18,9 +49,27 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
 
 
     move_list_t moves;
+
     gen_legal<c>(pos, moves);
+
     order_moves(pos, moves);
 
+    /**
+    if (const unsigned res = pos.wdl_probe(); res != TB_RESULT_FAILED)
+    {
+        if (res == TB_WIN)
+        {
+            return MATE_SCORE + depth;
+        }
+        if (res == TB_LOSS)
+        {
+            return -(MATE_SCORE + depth);
+        }
+        else
+        {
+            return 0;
+        }
+    } **/
 
     if (moves.empty()) {
         if (pos.checkers(c) != bb::empty) {
@@ -34,14 +83,15 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
         return 0;
     }
 
-    if (const auto entry = g_tt.probe(pos.hash(), depth))
+    if (const auto entry = g_tt.probe(pos.hash(), depth, alpha, beta))
     {
         tt_hits++;
         return entry.value().m_score;
     }
 
     if (depth == 0) {
-        return evaluate_position<c>(pos);
+        //return evaluate_position<c>(pos);
+        return qsearch<c>(pos, alpha, beta);
     }
 
     int bestEval = -INFINITE;
@@ -65,10 +115,12 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
         }
     }
 
-    g_tt.store(pos.hash(), depth, bestEval);
+    g_tt.store(pos.hash(), depth, bestEval, alpha, beta);
 
     return bestEval;
 }
+
+
 
 
 
@@ -78,6 +130,23 @@ move_t find_best_move(position_t& pos, int max_depth) {
 
     int total_nodes = 0;
     int total_tt_hits = 0;
+
+
+    if (const unsigned tb = pos.dtz_probe(); tb != TB_RESULT_FAILED)
+    {
+        if (TB_GET_PROMOTES(tb))
+        {
+            best_move = move_t::make<PROMOTION>(static_cast<square_t>(TB_GET_FROM(tb)), static_cast<square_t>(TB_GET_TO(tb)), QUEEN);
+        } else if (TB_GET_EP(tb))
+        {
+            best_move = move_t::make<EN_PASSANT>(static_cast<square_t>(TB_GET_FROM(tb)), static_cast<square_t>(TB_GET_TO(tb)));
+        }
+        else
+        {
+            best_move = move_t::make<NORMAL>(static_cast<square_t>(TB_GET_FROM(tb)), static_cast<square_t>(TB_GET_TO(tb)));
+        }
+        return best_move;
+    }
 
     for (int depth = 1; depth <= max_depth; ++depth) {
         move_list_t moves;
@@ -93,8 +162,10 @@ move_t find_best_move(position_t& pos, int max_depth) {
 
         move_t current_best = move_t::none();
 
+
         for (int i = 0; i < moves.size(); ++i) {
             const auto m = moves[i];
+
             pos.do_move(m);
 
             int eval = -minimax<~c>(pos, depth - 1, -beta, -alpha, nodes, tt_hits);

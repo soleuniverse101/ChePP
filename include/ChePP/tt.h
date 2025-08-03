@@ -10,21 +10,25 @@
 #include <bits/shared_ptr_base.h>
 #include <optional>
 
+enum tt_bound_t : uint8_t {
+    EXACT,
+    LOWER,
+    UPPER,
+};
+
 struct tt_entry_t
 {
 
     tt_entry_t() noexcept = default;
-    tt_entry_t(const hash_t hash, const int depth, const int score, const int generation)
-        : m_hash(hash), m_depth(depth), m_score(score), m_generation(generation)
+    tt_entry_t(const hash_t hash, const int depth, const int score, const tt_bound_t bound, const int generation)
+        : m_hash(hash), m_depth(depth), m_score(score), m_bound(bound), m_generation(generation)
     {
     }
-    [[nodiscard]] int ply() const
-    {
-        return m_generation + m_depth;
-    }
+
     hash_t  m_hash;
     int m_depth;
     int m_score;
+    tt_bound_t m_bound;
 
     int m_generation;
 };
@@ -45,23 +49,42 @@ struct tt_t
         m_table = std::make_unique<tt_entry_t[]>(m_size);
     }
 
-    std::optional<tt_entry_t> probe(const hash_t hash, const int depth) const
+    [[nodiscard]] std::optional<tt_entry_t> probe(const hash_t hash, const int depth, const int alpha, const int beta) const
     {
         const tt_entry_t& cur = m_table[index(hash)];
-        if (cur.m_hash == hash && cur.ply() >= ply(depth))
+        if (cur.m_hash != hash || cur.m_depth < depth || cur.m_generation != m_generation)
         {
-            return cur;
+            return std::nullopt;
         }
-        return std::nullopt;
+        switch (cur.m_bound) {
+            case EXACT:
+                return cur;
+            case LOWER:
+                if (cur.m_score >= beta)
+                    return cur;
+                break;
+            case UPPER:
+                if (cur.m_score <= alpha)
+                    return cur;
+                break;
+        }
+    return std::nullopt;
     }
 
-    void store(const hash_t hash, const int depth, const int score)
+    void store(const hash_t hash, const int depth, const int score, const int alpha, const int beta)
     {
-        const auto  entry = tt_entry_t(hash, depth, score, m_generation);
-        tt_entry_t& cur = m_table[index(entry.m_hash)];
-        if (cur.m_hash != entry.m_hash || cur.ply() < entry.ply())
-        {
-            cur = entry;
+        tt_entry_t& cur = m_table[index(hash)];
+        tt_bound_t bound;
+        if (score <= alpha) {
+            bound = UPPER;
+        } else if (score >= beta) {
+            bound = LOWER;
+        } else {
+            bound = EXACT;
+        }
+        const auto  entry = tt_entry_t(hash, depth, score, bound, m_generation);
+        if (cur.m_generation != m_generation || (cur.m_hash != hash && cur.m_depth < depth)) {
+            m_table[index(hash)] = entry;
         }
     }
 
@@ -71,10 +94,6 @@ struct tt_t
     }
 
 private:
-    int ply(const int depth) const
-    {
-        return m_generation + depth;
-    }
     size_t index(const hash_t hash) const
     {
         return hash & (m_size - 1);

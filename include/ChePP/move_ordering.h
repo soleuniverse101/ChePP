@@ -62,6 +62,19 @@ inline int score_move(const move_t& m, const position_t& pos, const move_t prev_
         score -= 7 * diff;
     }
 
+    if (bitboard_t b = bb::attacks(piece_piece_type(attacker), m.to_sq()) & pos.color_occupancy(~pos.color())) {
+        int max_enemy_val = 0;
+        while (b) {
+            square_t sq = static_cast<square_t>(pop_lsb(b));
+            piece_t p = pos.piece_at(sq);
+            max_enemy_val = std::max(max_enemy_val, piece_value(p));
+        }
+        int diff = max_enemy_val - attacker_val;
+        if (diff < 0) diff = 0;
+        score += 7 * diff;
+    }
+
+
     return score;
 }
 

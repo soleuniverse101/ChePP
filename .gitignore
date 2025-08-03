@@ -39,6 +39,9 @@ Makefile
 *.log
 *.vs/
 
+*.rtbw
+*.rtbz
+
 *.pro.user
 *.qbs.user
 *.qmake.stash

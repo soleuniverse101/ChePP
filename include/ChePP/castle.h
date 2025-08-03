@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include "src/tbprobe.h"
+
 enum side_t : int8_t
 {
     KINGSIDE  = 0,
@@ -40,6 +42,12 @@ class castling_rights_t
     static constexpr uint8_t WHITE_QUEENSIDE = 0b0010;
     static constexpr uint8_t BLACK_KINGSIDE  = 0b0100;
     static constexpr uint8_t BLACK_QUEENSIDE = 0b1000;
+
+    //compatibility with tb
+    static_assert(WHITE_KINGSIDE == TB_CASTLING_K);
+    static_assert(WHITE_QUEENSIDE == TB_CASTLING_Q);
+    static_assert(BLACK_KINGSIDE == TB_CASTLING_k);
+    static_assert(BLACK_QUEENSIDE == TB_CASTLING_q);
 
     static constexpr uint8_t ALL = WHITE_KINGSIDE | WHITE_QUEENSIDE | BLACK_KINGSIDE | BLACK_QUEENSIDE;
 

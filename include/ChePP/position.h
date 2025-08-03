@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <src/tbprobe.h>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -19,22 +20,26 @@ class position_t
     class state_t
     {
       public:
-
-        [[nodiscard]] square_t               ep_square() const { return m_ep_square; }
-        [[nodiscard]] piece_t                taken() const { return m_taken; }
+        [[nodiscard]] square_t ep_square() const { return m_ep_square; }
+        [[nodiscard]] piece_t  taken() const { return m_taken; }
 
         [[nodiscard]] all_colors<bitboard_t> checkers() const { return m_checkers; }
         [[nodiscard]] all_colors<bitboard_t> blockers() const { return m_blockers; }
         [[nodiscard]] all_colors<bitboard_t> check_mask() const { return m_check_mask; }
         [[nodiscard]] castling_rights_t      crs() const { return m_crs; }
-        [[nodiscard]] zobrist_t             hash() const { return m_hash; }
-        [[nodiscard]] int                   halfmove_clock() const { return m_halfmove_clock; }
+        [[nodiscard]] zobrist_t              hash() const { return m_hash; }
+        [[nodiscard]] int                    halfmove_clock() const { return m_halfmove_clock; }
 
         void crs_remove_rights(const uint8_t lost_mask) { m_crs.remove_right(lost_mask); }
 
-        state_t() : m_ep_square(NO_SQUARE), m_crs(castling_rights_t{0}), m_hash(zobrist_t{0}), m_taken(NO_PIECE), m_halfmove_clock(0) {}
+        state_t()
+            : m_ep_square(NO_SQUARE), m_crs(castling_rights_t{0}), m_hash(zobrist_t{0}), m_taken(NO_PIECE),
+              m_halfmove_clock(0)
+        {
+        }
         state_t(const state_t& prev)
-            : m_ep_square(NO_SQUARE), m_crs(prev.m_crs), m_hash(prev.m_hash), m_taken(NO_PIECE), m_halfmove_clock(prev.m_halfmove_clock)
+            : m_ep_square(NO_SQUARE), m_crs(prev.m_crs), m_hash(prev.m_hash), m_taken(NO_PIECE),
+              m_halfmove_clock(prev.m_halfmove_clock)
         {
         }
 
@@ -46,7 +51,7 @@ class position_t
         castling_rights_t      m_crs;
         zobrist_t              m_hash;
         piece_t                m_taken;
-        int                     m_halfmove_clock;
+        int                    m_halfmove_clock;
 
         friend class position_t;
     };
@@ -61,10 +66,13 @@ class position_t
     template <class... Ts>
     bitboard_t pieces_bb(color_t c, piece_type_t first, const Ts... rest) const;
     template <class... Ts>
-    bitboard_t pieces_bb(piece_type_t first, const Ts... rest) const;
-    [[nodiscard]] square_t ksq(const color_t c) const { return static_cast<square_t>(get_lsb(m_pieces_occupancy.at(c).at(KING))); }
-    [[nodiscard]] int               full_move() const {return m_fullmove;}
-    [[nodiscard]] int               ply() const { return m_ply; }
+    bitboard_t             pieces_bb(piece_type_t first, const Ts... rest) const;
+    [[nodiscard]] square_t ksq(const color_t c) const
+    {
+        return static_cast<square_t>(get_lsb(m_pieces_occupancy.at(c).at(KING)));
+    }
+    [[nodiscard]] int full_move() const { return m_fullmove; }
+    [[nodiscard]] int ply() const { return m_ply; }
 
     // state getters
     [[nodiscard]] color_t           color() const { return m_color; }
@@ -98,6 +106,7 @@ class position_t
     template <piece_type_t pt>
     void update_checkers(color_t c);
     void update_checkers(color_t c);
+    [[nodiscard]] bool gives_check(move_t move) const;
 
     void set_piece(piece_t piece, square_t sq);
     void set_piece(piece_type_t piece_type, color_t color, square_t sq);
@@ -117,6 +126,8 @@ class position_t
     void from_fen(std::string_view fen);
 
     [[nodiscard]] bool is_draw() const;
+    unsigned           wdl_probe() const;
+    unsigned           dtz_probe() const;
 
     void push_state()
     {
@@ -124,24 +135,22 @@ class position_t
         m_state_idx++;
     }
 
-    void pop_state()
-    {
-        m_state_idx--;
-    }
+    void pop_state() { m_state_idx--; }
 
     [[nodiscard]] std::string to_string() const;
     friend std::ostream&      operator<<(std::ostream& os, const position_t& pos) { return os << pos.to_string(); }
-private:
+
+  private:
     all_squares<piece_t>                    m_pieces{};
     all_colors<all_piece_types<bitboard_t>> m_pieces_occupancy{};
     all_colors<bitboard_t>                  m_color_occupancy{};
     bitboard_t                              m_global_occupancy{};
     color_t                                 m_color{};
-    int m_ply = 0;
-    int m_fullmove = 1;
+    int                                     m_ply      = 0;
+    int                                     m_fullmove = 1;
 
-    int                                     m_state_idx = 0;
-    std::array<state_t, 256>                m_states;
+    int                      m_state_idx = 0;
+    std::array<state_t, 256> m_states;
 };
 
 template <typename... Ts>
@@ -222,12 +231,19 @@ inline void position_t::update_checkers(const color_t c)
 {
     const auto ksq = static_cast<square_t>(get_lsb(pieces_bb(c, KING)));
 
-    m_states.at(m_state_idx).m_blockers.at(c)                               = bb::empty;
-    m_states.at(m_state_idx).m_check_mask.at(c) = m_states.at(m_state_idx).m_checkers.at(c) = attacking_sq_bb(ksq) & color_occupancy(~c);
+    m_states.at(m_state_idx).m_blockers.at(c)   = bb::empty;
+    m_states.at(m_state_idx).m_check_mask.at(c) = m_states.at(m_state_idx).m_checkers.at(c) =
+        attacking_sq_bb(ksq) & color_occupancy(~c);
 
     update_checkers<BISHOP>(c);
     update_checkers<ROOK>(c);
     update_checkers<QUEEN>(c);
+}
+
+inline bool position_t::gives_check(const move_t move) const
+{
+    assert(piece_color(piece_at(move.from_sq())) == color());
+    return (bb::attacks(piece_type_at(move.from_sq()), move.to_sq()) & ksq(~color())) != bb::empty;
 }
 
 inline void position_t::set_piece(const piece_t piece, const square_t sq)
@@ -276,7 +292,6 @@ inline void position_t::move_piece(const piece_t piece, const square_t from, con
     set_piece(piece, to);
 }
 
-
 inline void position_t::init_state()
 {
     m_states.at(m_state_idx).m_hash = zobrist_t(*this);
@@ -284,9 +299,6 @@ inline void position_t::init_state()
     update_checkers(WHITE);
     update_checkers(BLACK);
 }
-
-
-
 
 inline void position_t::from_fen(const std::string_view fen)
 {
@@ -326,7 +338,7 @@ inline void position_t::from_fen(const std::string_view fen)
     m_color = char_to_color(color[0]);
 
     castling_rights_t& crs = m_states.at(m_state_idx).m_crs;
-    crs = castling_rights_t::from_string(castling);
+    crs                    = castling_rights_t::from_string(castling);
 
     m_states.at(m_state_idx).m_ep_square = string_to_square(ep);
 
@@ -337,7 +349,6 @@ inline void position_t::from_fen(const std::string_view fen)
     m_fullmove = stoi(fullmove);
 
     init_state();
-
 }
 
 inline std::string position_t::to_string() const
@@ -348,7 +359,8 @@ inline std::string position_t::to_string() const
     out << "Side to move: " << color() << "\n";
     out << "Castling rights: " << m_states.at(m_state_idx).m_crs << "\n";
 
-    out << "En passant square: " << ep_square() << "\n";;
+    out << "En passant square: " << ep_square() << "\n";
+    ;
 
     out << "Zobrist hash: 0x" << std::hex << state().hash().value() << std::dec << "\n";
 
@@ -427,34 +439,37 @@ inline void position_t::do_move(const move_t move)
 {
     if (move == move_t::null())
     {
-        return do_null_move();
+        do_null_move();
+        return;
     }
     push_state();
 
-    state_t& state                    = m_states.at(m_state_idx);
+    state_t& state = m_states.at(m_state_idx);
 
     if (const square_t prev_ep = m_states.at(m_state_idx - 1).ep_square(); prev_ep != NO_SQUARE)
     {
         state.m_hash.flip_ep(fl_of(prev_ep));
     }
 
-    const square_t     from     = move.from_sq();
-    const square_t     to       = move.to_sq();
-    piece_type_t pt       = piece_type_at(from);
-    const color_t      us       = color();
+    const square_t from = move.from_sq();
+    const square_t to   = move.to_sq();
+    piece_type_t   pt   = piece_type_at(from);
+    const color_t  us   = color();
 
-    m_color                     = ~m_color;
+    m_color = ~m_color;
     state.m_hash.flip_color();
 
     state.m_halfmove_clock++;
-    if (us == BLACK) m_fullmove++;
+    if (us == BLACK)
+        m_fullmove++;
     m_ply++;
 
-    const direction_t up        = us == WHITE ? NORTH : SOUTH;
+    const direction_t up = us == WHITE ? NORTH : SOUTH;
 
     const move_type_t move_type = move.type_of();
 
-    const uint8_t lost = (castling_rights_t::lost_by_moving_from(from) | castling_rights_t::lost_by_moving_from(to)) & crs().mask();
+    const uint8_t lost =
+        (castling_rights_t::lost_by_moving_from(from) | castling_rights_t::lost_by_moving_from(to)) & crs().mask();
     if (lost)
     {
         state.m_crs.remove_right(lost);
@@ -464,8 +479,8 @@ inline void position_t::do_move(const move_t move)
     {
         const auto castling_type = move.castling_type();
         assert(castling_rights_t{lost}.has_right(castling_type));
-        auto [k_from, k_to]      = castling_rights_t::king_move(castling_type);
-        auto [r_from, r_to]      = castling_rights_t::rook_move(castling_type);
+        auto [k_from, k_to] = castling_rights_t::king_move(castling_type);
+        auto [r_from, r_to] = castling_rights_t::rook_move(castling_type);
 
         remove_piece(ROOK, us, r_from);
         move_piece(KING, us, k_from, k_to);
@@ -497,7 +512,8 @@ inline void position_t::do_move(const move_t move)
         // set new ep square
         else if (pt == PAWN && (to - from == (2 * up)))
         {
-            if (((bb::pseudo_attack<PAWN>(static_cast<square_t>(to - static_cast<int>(up)), us)) & color_occupancy(~us)) != bb::empty)
+            if (((bb::pseudo_attack<PAWN>(static_cast<square_t>(to - static_cast<int>(up)), us)) &
+                 color_occupancy(~us)) != bb::empty)
             {
                 state.m_ep_square = static_cast<square_t>(from + static_cast<int>(up));
                 state.m_hash.flip_ep(fl_of(from));
@@ -549,29 +565,30 @@ inline void position_t::do_null_move()
     update_checkers(~us);
 }
 
-
 inline void position_t::undo_move(const move_t move)
 {
 
     if (move == move_t::null())
     {
-        return undo_null_move();
+        undo_null_move();
+        return;
     }
 
     const piece_t taken = state().m_taken;
     pop_state();
 
-    m_color             = ~m_color;
+    m_color = ~m_color;
 
     const square_t     from      = move.from_sq();
     const square_t     to        = move.to_sq();
     const piece_type_t pt        = piece_type_at(to);
-    const color_t      us         = color();
+    const color_t      us        = color();
     const direction_t  up        = us == WHITE ? NORTH : SOUTH;
     const move_type_t  move_type = move.type_of();
 
     m_ply--;
-    if (us == BLACK) m_fullmove--;
+    if (us == BLACK)
+        m_fullmove--;
 
     if (move_type == CASTLING)
     {
@@ -616,14 +633,14 @@ inline void position_t::undo_move(const move_t move)
 
 inline void position_t::undo_null_move()
 {
-        pop_state();
-        m_color = ~m_color;
+    pop_state();
+    m_color = ~m_color;
 
-        m_ply--;
-        if (m_color == BLACK)
-            m_fullmove--;
+    m_ply--;
+    if (m_color == BLACK)
+        m_fullmove--;
 
-        update_checkers(~m_color);
+    update_checkers(~m_color);
 }
 
 inline bool position_t::is_draw() const
@@ -633,8 +650,8 @@ inline bool position_t::is_draw() const
         return true;
     }
     const hash_t target = hash();
-    int hits = 1;
-    size_t idx = m_state_idx;
+    int          hits   = 1;
+    size_t       idx    = m_state_idx;
     while (idx > 0)
     {
         state_t state = m_states.at(--idx);
@@ -652,6 +669,24 @@ inline bool position_t::is_draw() const
         }
     }
     return false;
+}
+
+inline unsigned position_t::wdl_probe() const
+{
+        int epsq = ep_square() == NO_SQUARE ? 0 : ep_square() + 1;
+        return tb_probe_wdl(color_occupancy(WHITE), color_occupancy(BLACK), pieces_bb(KING), pieces_bb(QUEEN),
+                            pieces_bb(ROOK), pieces_bb(BISHOP), pieces_bb(KNIGHT), pieces_bb(PAWN),
+                            static_cast<unsigned>(halfmove_clock()), crs().mask(), 0,
+                            color() == WHITE);
+}
+
+inline unsigned position_t::dtz_probe() const
+{
+    int epsq = ep_square() == NO_SQUARE ? 0 : ep_square() + 1;
+    return tb_probe_root(color_occupancy(WHITE), color_occupancy(BLACK), pieces_bb(KING), pieces_bb(QUEEN),
+                        pieces_bb(ROOK), pieces_bb(BISHOP), pieces_bb(KNIGHT), pieces_bb(PAWN),
+                        static_cast<unsigned>(halfmove_clock()), crs().mask(), epsq,
+                        color() == WHITE, nullptr);
 }
 
 

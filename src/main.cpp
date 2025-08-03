@@ -3,6 +3,7 @@
 #include "ChePP/position.h"
 #include "ChePP/search.h"
 #include "ChePP/tt.h"
+#include "ChePP/tb.h"
 
 #include <chrono>
 #include <iostream>
@@ -37,7 +38,10 @@ int main()
 {
     zobrist_t::init(0xFADA);
     bb::init();
-    g_tt.init(2048);
+    g_tt.init(512);
+    tb_init("/home/paul/code/ChePP/scripts/syzygy");
+
+    std::cout << TB_LARGEST << std::endl;
 
 
     position_t pos;
@@ -46,17 +50,18 @@ int main()
     //pos.from_fen("k7/8/B2NK3/8/8/8/8/8 w - - 0 1");
     //pos.from_fen("r1bq1rk1/pp3ppp/2n1pn2/2bp4/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 10");
     //pos.from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+    //pos.from_fen("8/8/p1pp4/8/2k5/1pP2P2/3K4/3N4 w - - 0 1");
     std::cout << pos;
 
 
 
-    for (int i = 0; i < 30; i++)
+    for (int i = 0; i < 50; i++)
     {
-        const auto mv = find_best_move<WHITE>(pos, 8);
+        const auto mv = find_best_move<WHITE>(pos, 6);
         g_tt.new_generation();
         pos.do_move(mv);
         std::cout << pos;
-        const auto mv2 = find_best_move<BLACK>(pos, 8);
+        const auto mv2 = find_best_move<BLACK>(pos, 6);
         g_tt.new_generation();
         pos.do_move(mv2);
         std::cout << pos;
