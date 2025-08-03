@@ -22,7 +22,7 @@ int qsearch(position_t& pos, int alpha, int beta)
 
     move_list_t list;
     gen_tactical<c>(pos, list);
-    //order_moves(pos, list);
+    order_moves(pos, list);
 
     for (size_t i = 0; i < list.size(); ++i)
     {
@@ -54,7 +54,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
 
     order_moves(pos, moves);
 
-    /**
+
     if (const unsigned res = pos.wdl_probe(); res != TB_RESULT_FAILED)
     {
         if (res == TB_WIN)
@@ -69,7 +69,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
         {
             return 0;
         }
-    } **/
+    }
 
     if (moves.empty()) {
         if (pos.checkers(c) != bb::empty) {
