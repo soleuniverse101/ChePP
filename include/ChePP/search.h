@@ -14,15 +14,59 @@
 template <color_t c>
 int qsearch(position_t& pos, int alpha, int beta)
 {
+
+
+
     int stand_pat = evaluate_position<c>(pos);
+
+    move_list_t list;
+    gen_tactical<c>(pos, list);
+    order_moves(pos, list);
+
+    if (list.empty()) {
+        if (pos.checkers(c) != bb::empty) {
+            stand_pat = -(MATE_SCORE);
+        }
+        stand_pat = 0;
+    }
+
+    if (pos.is_draw())
+    {
+        stand_pat = 0;
+    }
+
+
+    if (const unsigned res = pos.wdl_probe(); res != TB_RESULT_FAILED)
+    {
+        if (res == TB_WIN)
+        {
+            stand_pat = MATE_SCORE;
+        }
+        if (res == TB_LOSS)
+        {
+            stand_pat =  -(MATE_SCORE);
+        }
+        else
+        {
+            stand_pat =  0;
+        }
+    }
+
+
+    if (const auto entry = g_tt.probe(pos.hash(), 0, alpha, beta))
+    {
+        stand_pat = entry.value().m_score;
+    }
+
+
+
+
     if (stand_pat >= beta)
         return beta;
     if (stand_pat > alpha)
         alpha = stand_pat;
 
-    move_list_t list;
-    gen_tactical<c>(pos, list);
-    order_moves(pos, list);
+
 
     for (size_t i = 0; i < list.size(); ++i)
     {
@@ -55,6 +99,18 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
     order_moves(pos, moves);
 
 
+    if (moves.empty()) {
+        if (pos.checkers(c) != bb::empty) {
+            return -(MATE_SCORE + depth);
+        }
+        return 0;
+    }
+
+    if (pos.is_draw())
+    {
+        return 0;
+    }
+
     if (const unsigned res = pos.wdl_probe(); res != TB_RESULT_FAILED)
     {
         if (res == TB_WIN)
@@ -71,17 +127,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
         }
     }
 
-    if (moves.empty()) {
-        if (pos.checkers(c) != bb::empty) {
-            return -(MATE_SCORE + depth);
-        }
-        return 0;
-    }
 
-    if (pos.is_draw())
-    {
-        return 0;
-    }
 
     if (const auto entry = g_tt.probe(pos.hash(), depth, alpha, beta))
     {

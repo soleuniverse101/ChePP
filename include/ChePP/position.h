@@ -87,6 +87,7 @@ class position_t
     [[nodiscard]] hash_t            hash() const { return state().hash().value(); }
     [[nodiscard]] castling_rights_t crs() const { return state().crs(); }
     [[nodiscard]] int               halfmove_clock() const { return state().halfmove_clock(); }
+    [[nodiscard]] piece_t           taken() const { return state().taken(); }
 
     // relative directions
     [[nodiscard]] direction_t up() const { return color() == WHITE ? NORTH : SOUTH; }

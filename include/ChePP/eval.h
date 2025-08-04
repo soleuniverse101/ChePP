@@ -150,7 +150,7 @@ inline int evaluate_pawn_structure(const position_t& pos, color_t c)
 
         if (blockers == 0)
         {
-            score += 20;
+            score += 20 * (32 - popcount(pos.occupancy())) / 10;
         }
     }
 
