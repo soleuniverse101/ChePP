@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-O3 -march=native -Wall)
 
-add_subdirectory(src)
+add_subdirectory(engine)
 
 enable_testing()
-add_subdirectory(gtests)

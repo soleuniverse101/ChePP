@@ -5,9 +5,11 @@
 #ifndef NNUE_H
 #define NNUE_H
 
-#include "movegen.h"
 #include "types.h"
-#include "xsimd/xsimd.hpp"
+#include "movegen.h"
+#include <hwy/highway.h>
+#include <hwy/highway_export.h>
+
 
 template <size_t sz>
 struct accumulator_t
@@ -50,17 +52,19 @@ struct layer_t
     std::array<int16_t, out_sz>              m_biases;
 };
 
-template <typename arch>
+HWY_BEFORE_NAMESPACE();
+namespace hn = hwy::HWY_NAMESPACE;
+HWY_AFTER_NAMESPACE();
+
+
 struct nnue_t
 {
     nnue_t() = default;
 
+    using D = hn::ScalableTag<int16_t>;
+    using Vec = hn::Vec<D>;
 
     static constexpr size_t s_accumulator_size = 256;
-
-    using simd_reg                             = xsimd::batch<float, arch>;
-    static constexpr std::size_t simd_reg_size = simd_reg::size;
-    static_assert(s_accumulator_size % simd_reg_size == 0, "accumulator size must be a multiple of simd_reg_size.");
 
     layer_t<int16_t, feature_t::n_features, s_accumulator_size> m_accumulator_layer{};
     std::array<accumulator_t<s_accumulator_size>, MAX_PLY>      m_accumulator_stack{};
@@ -104,7 +108,7 @@ struct nnue_t
                 m_remove_dirty_features.at(m_remove_features_idx++) = feature_t::make(move.from_sq(), PAWN, c);
                 m_add_dirty_features.at(m_add_features_idx++)      = feature_t::make(move.to_sq(), PAWN, c);
                 m_remove_dirty_features.at(m_remove_features_idx++) =
-                    feature_t::make(static_cast<square_t>(move.to_sq() - down), PAWN, ~c);
+                    feature_t::make(static_cast<square_t>(static_cast<int>(move.to_sq()) - down), PAWN, ~c);
                 break;
             }
             case NORMAL:
@@ -135,45 +139,37 @@ struct nnue_t
         }
     }
 
-    void update_accumulator(const position_t& pos)
-    {
+    void update_accumulator(const position_t& pos) {
+        using D = hn::ScalableTag<int16_t>;
+        constexpr D      d;
+        constexpr size_t lanes = hn::Lanes(d);
 
         auto& accumulator = m_accumulator_stack[m_accumulator_idx];
-        constexpr std::size_t simd_size = simd_reg_size;
-        constexpr std::size_t acc_size = s_accumulator_size;
 
-        // Process removed features
-        for (size_t i = 0; i < m_remove_features_idx; ++i)
-        {
-            for (const auto side : {WHITE, BLACK})
-            {
+        // Removed features
+        for (size_t i = 0; i < m_remove_features_idx; ++i) {
+            for (const auto side : {WHITE, BLACK}) {
                 const auto& f = m_remove_dirty_features[i];
                 const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(side)));
 
-                for (size_t j = 0; j < acc_size; j += simd_size)
-                {
-                    simd_reg acc = simd_reg::load_unaligned(&accumulator[side][j]);
-                    simd_reg w   = simd_reg::load_unaligned(&weights[j]);
-                    acc -= w;
-                    acc.store_unaligned(&accumulator[side][j]);
+                for (size_t j = 0; j < s_accumulator_size; j += lanes) {
+                    const auto acc = hn::LoadU(d, &accumulator[side][j]);
+                    const auto w   = hn::LoadU(d, &weights[j]);
+                    hn::StoreU(hn::Sub(acc, w), d, &accumulator[side][j]);
                 }
             }
         }
 
-        // Process added features
-        for (size_t i = 0; i < m_add_features_idx; ++i)
-        {
-            for (const auto side : {WHITE, BLACK})
-            {
+        // Added features
+        for (size_t i = 0; i < m_add_features_idx; ++i) {
+            for (const auto side : {WHITE, BLACK}) {
                 const auto& f = m_add_dirty_features[i];
                 const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(side)));
 
-                for (size_t j = 0; j < acc_size; j += simd_size)
-                {
-                    simd_reg acc = simd_reg::load_unaligned(&accumulator[side][j]);
-                    simd_reg w   = simd_reg::load_unaligned(&weights[j]);
-                    acc += w;
-                    acc.store_unaligned(&accumulator[side][j]);
+                for (size_t j = 0; j < s_accumulator_size; j += lanes) {
+                    const auto acc = hn::LoadU(d, &accumulator[side][j]);
+                    const auto w   = hn::LoadU(d, &weights[j]);
+                    hn::StoreU(hn::Add(acc, w), d, &accumulator[side][j]);
                 }
             }
         }
@@ -181,6 +177,7 @@ struct nnue_t
         m_remove_features_idx = 0;
         m_add_features_idx = 0;
     }
+
 };
 
 

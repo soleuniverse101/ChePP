@@ -1,15 +1,15 @@
-#include "ChePP/bitboard.h"
-#include "ChePP/movegen.h"
-#include "ChePP/position.h"
-#include "ChePP/search.h"
-#include "ChePP/tt.h"
-#include "ChePP/tb.h"
-#include "ChePP/nnue.h"
+#include "ChePP/engine/bitboard.h"
+#include "ChePP/engine/movegen.h"
+#include "ChePP/engine/position.h"
+#include "ChePP/engine/search.h"
+#include "ChePP/engine/tt.h"
+#include "ChePP/engine/tb.h"
+#include "ChePP/engine/nnue.h"
+#include "ChePP/engine/zobrist.h"
 
 #include <chrono>
 #include <iostream>
 
-#include <xsimd/xsimd.hpp>
 #include <iostream>
 
 
@@ -46,11 +46,11 @@ int main()
     position_t pos;
     pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-    nnue_t<xsimd::avx2>* nnue = new nnue_t<xsimd::avx2>();
-    std::cout << nnue_t<xsimd::avx2>::simd_reg_size << std::endl;
+
+    const auto nnue = new nnue_t();
     nnue->add_dirty_move<WHITE>(pos, move_t::make<NORMAL>(E2, E4));
     nnue->update_accumulator(pos);
-
+    delete nnue;
 
     zobrist_t::init(0xFADA);
     bb::init();

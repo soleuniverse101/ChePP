@@ -1,11 +1,11 @@
 #ifndef POSITION_H_INCLUDED
 #define POSITION_H_INCLUDED
+#include "prng.h"
+#include "zobrist.h"
 #include "bitboard.h"
 #include "castle.h"
 #include "move.h"
-#include "prng.h"
 #include "types.h"
-#include "zobrist.h"
 
 #include <iostream>
 #include <memory>
@@ -127,8 +127,8 @@ class position_t
     void from_fen(std::string_view fen);
 
     [[nodiscard]] bool is_draw() const;
-    unsigned           wdl_probe() const;
-    unsigned           dtz_probe() const;
+    [[nodiscard]] unsigned           wdl_probe() const;
+    [[nodiscard]] unsigned           dtz_probe() const;
 
     void push_state()
     {
@@ -672,12 +672,13 @@ inline bool position_t::is_draw() const
     return false;
 }
 
+
 inline unsigned position_t::wdl_probe() const
 {
         int epsq = ep_square() == NO_SQUARE ? 0 : ep_square() + 1;
         return tb_probe_wdl(color_occupancy(WHITE), color_occupancy(BLACK), pieces_bb(KING), pieces_bb(QUEEN),
                             pieces_bb(ROOK), pieces_bb(BISHOP), pieces_bb(KNIGHT), pieces_bb(PAWN),
-                            static_cast<unsigned>(halfmove_clock()), crs().mask(), 0,
+                            static_cast<unsigned>(halfmove_clock()), crs().mask(), epsq,
                             color() == WHITE);
 }
 

@@ -1,4 +1,4 @@
-#include "ChePP/bitboard.h"
+#include "ChePP/engine/bitboard.h"
 
 #include <random>
 #include <sstream>

@@ -1,5 +1,5 @@
-#include "ChePP/zobrist.h"
-#include "ChePP/position.h"
+#include "ChePP/engine/zobrist.h"
+#include "ChePP/engine/position.h"
 #include "iostream"
 
 using zb = zobrist_t;

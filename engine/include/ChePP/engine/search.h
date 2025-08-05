@@ -5,9 +5,9 @@
 #ifndef SEARCH_H
 #define SEARCH_H
 
+#include "tt.h"
 #include "eval.h"
 #include "move_ordering.h"
-#include "tt.h"
 
 #include <src/tbprobe.h>
 

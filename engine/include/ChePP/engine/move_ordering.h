@@ -5,11 +5,9 @@
 #ifndef MOVE_ORDERING_H
 #define MOVE_ORDERING_H
 
-#include "movegen.h"
 #include "algorithm"
+#include "movegen.h"
 #include "types.h"
-
-
 
 inline int score_move(const move_t& m, const position_t& pos, const move_t prev_best) {
     if (m == prev_best) {
