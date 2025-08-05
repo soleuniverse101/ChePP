@@ -12,6 +12,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fathom)
 
 
+FetchContent_Declare(
+        xsimd
+        GIT_REPOSITORY https://github.com/xtensor-stack/xsimd.git
+        GIT_TAG        master
+)
+
+FetchContent_MakeAvailable(xsimd)
 
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
         *.cpp
@@ -20,6 +27,7 @@ list(FILTER ENGINE_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
 
 list(APPEND ENGINE_SOURCES
         ${fathom_SOURCE_DIR}/src/tbprobe.c
+        ${xsimd_SOURCE_DIR}/include/xsimd/xsimd.hpp
 )
 
 add_library(ChePP_engine STATIC ${ENGINE_SOURCES})
@@ -27,9 +35,12 @@ add_library(ChePP_engine STATIC ${ENGINE_SOURCES})
 target_include_directories(ChePP_engine PUBLIC
         ${CMAKE_SOURCE_DIR}/include
         ${fathom_SOURCE_DIR}
+        ${xsimd_SOURCE_DIR}
 )
 
 target_compile_definitions(ChePP_engine PRIVATE TB_NO_THREADS=1)
+
+target_link_libraries(ChePP_engine PUBLIC xsimd)
 
 
 add_executable(ChePP main.cpp)

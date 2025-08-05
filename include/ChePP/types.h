@@ -415,6 +415,8 @@ constexpr int pop_lsb(T& bb) noexcept
     return n;
 }
 
+constexpr size_t MAX_PLY = 255;
+
 constexpr int MATE_SCORE = 100000;
 constexpr int INFINITE = 1000000;
 
