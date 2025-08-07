@@ -24,7 +24,7 @@ int qsearch(position_t& pos, int alpha, int beta)
     order_moves(pos, list);
 
     if (list.empty()) {
-        if (pos.checkers(c) != bb::empty) {
+        if (pos.checkers(c) != bb::empty()) {
             stand_pat = -(MATE_SCORE);
         }
         stand_pat = 0;
@@ -100,7 +100,7 @@ int minimax(position_t& pos, int depth, int alpha, int beta, int& searched, int&
 
 
     if (moves.empty()) {
-        if (pos.checkers(c) != bb::empty) {
+        if (pos.checkers(c) != bb::empty()) {
             return -(MATE_SCORE + depth);
         }
         return 0;

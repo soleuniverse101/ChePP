@@ -18,7 +18,7 @@ enum side_t : int8_t
     QUEENSIDE = 1
 };
 
-enum castling_type_t : int8_t
+enum castling_type_t : uint8_t
 {
     WHITE_OO          = 0,
     WHITE_OOO         = 1,
@@ -71,7 +71,7 @@ class castling_rights_t
 
     static constexpr castling_type_t type(const color_t c, const side_t s)
     {
-        return static_cast<castling_type_t>(c * 2 + s);
+        return static_cast<castling_type_t>(index(c) * 2 + s);
     }
 
     // Get castling bitmask for a specific castling type
@@ -166,19 +166,19 @@ class castling_rights_t
     // Returns the bitmask of castling rights lost by moving from a square
     static constexpr uint8_t lost_by_moving_from(const square_t square)
     {
-        switch (square)
+        switch (index(square))
         {
-            case E1:
+            case index(E1):
                 return WHITE_KINGSIDE | WHITE_QUEENSIDE;
-            case H1:
+            case index(H1):
                 return WHITE_KINGSIDE;
-            case A1:
+            case index(A1):
                 return WHITE_QUEENSIDE;
-            case E8:
+            case index(E8):
                 return BLACK_KINGSIDE | BLACK_QUEENSIDE;
-            case H8:
+            case index(H8):
                 return BLACK_KINGSIDE;
-            case A8:
+            case index(A8):
                 return BLACK_QUEENSIDE;
             default:
                 return 0;

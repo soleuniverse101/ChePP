@@ -5,9 +5,6 @@
 #include "move.h"
 #include "position.h"
 
-#include <iostream>
-#include <memory>
-
 enum movegen_type_t
 {
     ALL,
@@ -52,19 +49,17 @@ struct move_list_t
 
     [[nodiscard]] bool empty() const { return m_size == 0; }
 
-    move_t* begin() { return m_moves.data(); }
-    move_t* end() { return m_moves.data() + m_size; }
+    move_t*                     begin() { return m_moves.data(); }
+    move_t*                     end() { return m_moves.data() + m_size; }
     [[nodiscard]] const move_t* begin() const { return m_moves.data(); }
     [[nodiscard]] const move_t* end() const { return m_moves.data() + m_size; }
     [[nodiscard]] const move_t* cbegin() const { return m_moves.data(); }
     [[nodiscard]] const move_t* cend() const { return m_moves.data() + m_size; }
 
-private:
+  private:
     std::array<move_t, max_moves> m_moves;
-    size_t m_size;
+    size_t                        m_size;
 };
-
-
 
 inline void make_all_promotions(move_list_t& list, const square_t from, const square_t to)
 {
@@ -78,21 +73,19 @@ template <color_t c>
 void gen_pawn_moves(const position_t& pos, move_list_t& list)
 {
     // check mask refers to king attackers u rays of king attackers
-    constexpr direction_t up       = c == WHITE ? NORTH : SOUTH;
-    constexpr direction_t right    = c == WHITE ? EAST : WEST;
-    constexpr auto        down     = static_cast<direction_t>(-up);
-    constexpr auto        up_right = static_cast<direction_t>(up + right);
-    constexpr auto        up_left  = static_cast<direction_t>(up - right);
+    constexpr auto up{relative_dir<c, NORTH>};
+    constexpr auto right{relative_dir<c, EAST>};
+    constexpr auto down{-up};
+    constexpr auto up_right{up + right};
+    constexpr auto up_left{up - right};
 
-    constexpr bitboard_t bb_promotion_rank = c == WHITE ? bb::rk_mask(RANK_7) : bb::rk_mask(RANK_2);
-    constexpr bitboard_t bb_third_rank     = c == WHITE ? bb::rk_mask(RANK_3) : bb::rk_mask(RANK_6);
-    const bitboard_t     check_mask        = pos.check_mask(c) == bb::empty ? bb::full : pos.check_mask(c);
-    const bitboard_t     available         = ~pos.color_occupancy(ANY);
+    constexpr bitboard_t bb_promotion_rank = c == WHITE ? bb::rank(RANK_7) : bb::rank(RANK_2);
+    constexpr bitboard_t bb_third_rank     = c == WHITE ? bb::rank(RANK_3) : bb::rank(RANK_6);
+    const bitboard_t     check_mask        = pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c);
+    const bitboard_t     available         = ~pos.occupancy();
     const bitboard_t     enemy             = pos.color_occupancy(~c);
     const bitboard_t     pawns             = pos.pieces_bb(c, PAWN);
-    const bitboard_t     ep_bb             = (pos.ep_square() == NO_SQUARE ? bb::empty : bb::sq_mask(pos.ep_square()));
-
-
+    const bitboard_t     ep_bb             = pos.ep_square() == NO_SQUARE ? bb::empty() : bb::square(pos.ep_square());
 
     // straight
     {
@@ -102,13 +95,13 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
 
         while (single_push)
         {
-            const auto sq = static_cast<square_t>(pop_lsb(single_push));
-            list.add(move_t::make<NORMAL>(static_cast<square_t>(sq - static_cast<int>(up)), sq));
+            const square_t sq{single_push.pops_lsb()};
+            list.add(move_t::make<NORMAL>(sq - up, sq));
         }
         while (double_push)
         {
-            const auto sq = static_cast<square_t>(pop_lsb(double_push));
-            list.add(move_t::make<NORMAL>(static_cast<square_t>(sq - 2 * static_cast<int>(up)), sq));
+            const square_t sq{double_push.pops_lsb()};
+            list.add(move_t::make<NORMAL>(sq - up - up, sq));
         }
     }
     // promotion
@@ -117,28 +110,26 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
         bitboard_t push = bb::shift<up>(promotions) & available & check_mask;
         while (push)
         {
-            const auto sq = static_cast<square_t>(pop_lsb(push));
-            make_all_promotions(list, static_cast<square_t>(sq - static_cast<int>(up)), sq);
-
+            const square_t sq{push.pops_lsb()};
+            make_all_promotions(list, sq - up, sq);
         }
         bitboard_t take_right = bb::shift<up_right>(promotions) & enemy & check_mask;
         while (take_right)
         {
-            const auto sq = static_cast<square_t>(pop_lsb(take_right));
-            make_all_promotions(list, static_cast<square_t>(sq - (up + right)), sq);
-
+            const square_t sq{take_right.pops_lsb()};
+            make_all_promotions(list, sq - up_right, sq);
         }
         bitboard_t take_left = bb::shift<up_left>(promotions) & enemy & check_mask;
         while (take_left)
         {
-            const auto sq = static_cast<square_t>(pop_lsb(take_left));
-            make_all_promotions(list, static_cast<square_t>(sq - (up - right)), sq);
+            const square_t sq{take_left.pops_lsb()};
+            make_all_promotions(list, sq - up_left, sq);
         }
     }
     // capture
     {
         bitboard_t capturable = enemy | ep_bb;
-        bitboard_t ep_mask    = bb::empty;
+        bitboard_t ep_mask    = bb::empty();
         if (check_mask & bb::shift<down>(ep_bb))
         {
             ep_mask = ep_bb;
@@ -146,45 +137,44 @@ void gen_pawn_moves(const position_t& pos, move_list_t& list)
         bitboard_t take_right = bb::shift<up_right>(pawns & ~bb_promotion_rank) & capturable & (check_mask | ep_mask);
         while (take_right)
         {
-            if (const auto sq = static_cast<square_t>(pop_lsb(take_right)); sq == pos.ep_square()) [[unlikely]]
+            if (const square_t sq{take_right.pops_lsb()}; sq == pos.ep_square()) [[unlikely]]
             {
-                list.add(move_t::make<EN_PASSANT>(static_cast<square_t>(sq - (up + right)), sq));
+                list.add(move_t::make<EN_PASSANT>(sq - up_right, sq));
             }
             else [[likely]]
             {
-                list.add(move_t::make<NORMAL>(static_cast<square_t>(sq - (up + right)), sq));
+                list.add(move_t::make<NORMAL>(sq - up_right, sq));
             }
         }
         bitboard_t take_left = bb::shift<up_left>(pawns & ~bb_promotion_rank) & capturable & (check_mask | ep_mask);
         while (take_left)
         {
-            if (const auto sq = static_cast<square_t>(pop_lsb(take_left)); sq == pos.ep_square()) [[unlikely]]
+            if (const square_t sq{take_left.pops_lsb()}; sq == pos.ep_square()) [[unlikely]]
             {
-                list.add(move_t::make<EN_PASSANT>(static_cast<square_t>(sq - (up - right)), sq));
+                list.add(move_t::make<EN_PASSANT>(sq - up_left, sq));
             }
             else [[likely]]
             {
-                list.add(move_t::make<NORMAL>(static_cast<square_t>(sq - (up - right)), sq));
+                list.add(move_t::make<NORMAL>(sq - up_left, sq));
             }
         }
     }
 }
 
-
-
 template <piece_type_t pc, color_t c>
 void gen_pc_moves(const position_t& pos, move_list_t& list)
 {
-    const bitboard_t check_mask = pos.check_mask(c) == bb::empty ? bb::full : pos.check_mask(c);
+
+    const bitboard_t check_mask = pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c);
     bitboard_t       bb         = pos.pieces_occupancy(c, pc);
 
     while (bb)
     {
-        auto       from    = static_cast<square_t>(pop_lsb(bb));
-        bitboard_t attacks = bb::attacks<pc>(from, pos.color_occupancy(ANY)) & ~pos.color_occupancy(c) & check_mask;
+        const square_t from{bb.pops_lsb()};
+        bitboard_t     attacks = bb::attacks<pc>(from, pos.occupancy()) & ~pos.color_occupancy(c) & check_mask;
         while (attacks)
         {
-            list.add(move_t::make<NORMAL>(from, static_cast<square_t>(pop_lsb(attacks))));
+            list.add(move_t::make<NORMAL>(from, square_t{attacks.pops_lsb()}));
         }
     }
 }
@@ -192,8 +182,8 @@ void gen_pc_moves(const position_t& pos, move_list_t& list)
 template <color_t c>
 void gen_castling(const position_t& pos, move_list_t& list)
 {
-    using cr                    = castling_rights_t;
-    if (pos.check_mask(c) != bb::empty)
+    using cr = castling_rights_t;
+    if (pos.check_mask(c) != bb::empty())
         return;
     const cr crs = pos.crs();
     if (crs.mask() == 0)
@@ -202,14 +192,14 @@ void gen_castling(const position_t& pos, move_list_t& list)
     {
         if (cr::mask(cr::type(c, side)) & crs.mask())
         {
-            auto [k_from, k_to]       = cr::king_move(cr::type(c, side));
+            auto [k_from, k_to] = cr::king_move(cr::type(c, side));
             auto [r_from, r_to] = cr::rook_move(cr::type(c, side));
-            assert(pos.piece_at(k_from) == piece(KING, c));
-            bool safe = ((bb::from_to_excl(k_from, r_from) & pos.color_occupancy(ANY)) == bb::empty);
-            const direction_t dir = direction_from(k_from, k_to);
-            assert(dir != INVALID);
-            const int offset = dir;
-            for (auto sq = k_from; sq != k_to && safe; sq = static_cast<square_t>(sq + offset))
+            const piece_t our_king{c, KING};
+            assert(pos.piece_at(k_from) == our_king);
+            bool              safe = ((bb::from_to_excl(k_from, r_from) & pos.occupancy()) == bb::empty());
+            const direction_t dir  = direction_from(k_from, k_to);
+            assert(dir != NO_DIRECTION);
+            for (auto sq = k_from; sq != k_to; sq = sq + dir)
             {
                 if (pos.attacking_sq_bb(sq) & pos.color_occupancy(~c))
                 {
@@ -225,22 +215,21 @@ void gen_castling(const position_t& pos, move_list_t& list)
     }
 }
 
-
 template <color_t c>
 void gen_king_moves(const position_t& pos, move_list_t& list)
 {
-    const auto       from  = static_cast<square_t>(get_lsb(pos.pieces_bb(c, KING)));
-    const bitboard_t       moves      = bb::attacks<KING>(from, pos.color_occupancy(ANY));
-    bitboard_t quiet = moves & ~pos.color_occupancy(ANY);
+    const square_t   from  = pos.ksq(c);
+    const bitboard_t moves = bb::attacks<KING>(from, pos.occupancy());
+    bitboard_t       quiet = moves & ~pos.occupancy();
     while (quiet)
     {
-        const auto to = static_cast<square_t>(pop_lsb(quiet));
+        const square_t to{quiet.pops_lsb()};
         list.add(move_t::make<NORMAL>(from, to));
     }
     bitboard_t captures = moves & pos.color_occupancy(~c);
     while (captures)
     {
-        const auto to = static_cast<square_t>(pop_lsb(captures));
+        const square_t to{captures.pops_lsb()};
         list.add(move_t::make<NORMAL>(from, to));
     }
     gen_castling<c>(pos, list);
@@ -249,7 +238,7 @@ void gen_king_moves(const position_t& pos, move_list_t& list)
 template <color_t c>
 void gen_legal(const position_t& pos, move_list_t& list)
 {
-    const int n_checkers = popcount(pos.checkers(c));
+    const int n_checkers = pos.checkers(c).popcount();
     assert(n_checkers <= 2);
     if (n_checkers == 2)
     {
@@ -278,7 +267,7 @@ void gen_legal(const position_t& pos, move_list_t& list)
 template <color_t c>
 void gen_tactical(const position_t& pos, move_list_t& list)
 {
-    const int n_checkers = popcount(pos.checkers(c));
+    const int n_checkers = pos.checkers(c).popcount();
     assert(n_checkers <= 2);
     if (n_checkers == 2)
     {
@@ -297,7 +286,7 @@ void gen_tactical(const position_t& pos, move_list_t& list)
     for (size_t i = 0; i < list.size(); ++i)
     {
         move_t mv = list[i];
-        if (pos.is_legal<c>(list[i]) && ( pos.is_occupied(mv.to_sq()) || mv.type_of() == PROMOTION))
+        if (pos.is_legal<c>(list[i]) && (pos.is_occupied(mv.to_sq()) || mv.type_of() == PROMOTION))
         {
             list[idx++] = list[i];
         }
@@ -305,9 +294,8 @@ void gen_tactical(const position_t& pos, move_list_t& list)
     list.shrink(list.size() - idx);
 }
 
-
-
-inline void perft(position_t& pos, const int ply, size_t& out) {
+inline void perft(position_t& pos, const int ply, size_t& out)
+{
     move_list_t l;
     if (pos.color() == WHITE)
         gen_legal<WHITE>(pos, l);
@@ -320,10 +308,10 @@ inline void perft(position_t& pos, const int ply, size_t& out) {
         return;
     }
 
-    for (size_t i = 0; i < l.size(); ++i) {
-        const auto mv = l[i];
+    for (const auto mv : l)
+    {
         pos.do_move(mv);
-        //std::cout << mv << std::endl;
+        // std::cout << mv << std::endl;
         perft(pos, ply - 1, out);
         pos.undo_move(mv);
     }

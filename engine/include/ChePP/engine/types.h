@@ -1,370 +1,857 @@
 #ifndef TYPES_H_INCLUDED
 #define TYPES_H_INCLUDED
+
 #include <array>
 #include <bit>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <optional>
+#include <algorithm>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 
-using hash_t      = std::uint64_t;
-using bitboard_t = std::uint64_t;
-
-
-// clang-format off
-enum square_t : int8_t {
-  NO_SQUARE = -1,
-  A1, B1, C1, D1, E1, F1, G1, H1,
-  A2, B2, C2, D2, E2, F2, G2, H2,
-  A3, B3, C3, D3, E3, F3, G3, H3,
-  A4, B4, C4, D4, E4, F4, G4, H4,
-  A5, B5, C5, D5, E5, F5, G5, H5,
-  A6, B6, C6, D6, E6, F6, G6, H6,
-  A7, B7, C7, D7, E7, F7, G7, H7,
-  A8, B8, C8, D8, E8, F8, G8, H8,
-  NB_SQUARES
-};
-
-constexpr std::array squares = {
-    A1, B1, C1, D1, E1, F1, G1, H1,
-    A2, B2, C2, D2, E2, F2, G2, H2,
-    A3, B3, C3, D3, E3, F3, G3, H3,
-    A4, B4, C4, D4, E4, F4, G4, H4,
-    A5, B5, C5, D5, E5, F5, G5, H5,
-    A6, B6, C6, D6, E6, F6, G6, H6,
-    A7, B7, C7, D7, E7, F7, G7, H7,
-    A8, B8, C8, D8, E8, F8, G8, H8,
-};
-// clang-format on
-
-constexpr bool is_ok(const square_t sq) { return (sq >= A1 && sq <= H8) || (sq == NO_SQUARE); }
-
-inline int mirror_sq(const int sq) {
-    return (7 - (sq / 8)) * 8 + (sq % 8);
-}
+using hash_t     = std::uint64_t;
 
 template <typename T>
-using all_squares = std::array<T, NB_SQUARES>;
+struct enum_utils;
 
-
-
-enum file_t : int8_t
-{
-    FILE_A,
-    FILE_B,
-    FILE_C,
-    FILE_D,
-    FILE_E,
-    FILE_F,
-    FILE_G,
-    FILE_H,
-    NB_FILES
-};
-
-constexpr bool is_ok(const file_t f) { return f >= FILE_A && f <= FILE_H;}
-
-constexpr std::array files = { FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H };
+template <typename T, typename = void>
+struct has_enum_utils : std::false_type {};
 
 template <typename T>
-using all_files = std::array<T, NB_FILES>;
-
-constexpr file_t fl_of(const square_t sq)
-{
-    assert(is_ok(sq));
-    return static_cast<file_t>(static_cast<int8_t>(sq) & 7);
-}
-
-constexpr char file_to_char(const file_t f) {
-    assert(is_ok(f));
-    return static_cast<char>('a' + f);
-}
-
-inline file_t char_to_file(const char c) {
-    assert(c >= 'a' && c <= 'h');
-    return static_cast<file_t>(c - 'a');
-}
-
-inline std::ostream& operator<<(std::ostream& os, const file_t f) {
-    return os << file_to_char(f);
-}
-
-
-
-enum rank_t : int8_t
-{
-    RANK_1,
-    RANK_2,
-    RANK_3,
-    RANK_4,
-    RANK_5,
-    RANK_6,
-    RANK_7,
-    RANK_8,
-    NB_RANKS
-};
-
-constexpr bool is_ok(const rank_t r) { return r >= RANK_1 && r <= RANK_8;}
-
-constexpr std::array ranks = { RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8};
+struct has_enum_utils<T, std::void_t<decltype(enum_utils<T>::is_well_ordered)>> : std::true_type {};
 
 template <typename T>
-using all_ranks = std::array<T, NB_RANKS>;
+inline constexpr bool has_enum_utils_v = has_enum_utils<T>::value;
 
-constexpr rank_t rk_of(const square_t sq)
+#define DEFINE_HAS_ENUM_UTILS_MEMBER(NAME)                                                                             \
+    template <typename T, typename = void>                                                                             \
+    struct has_##NAME : std::false_type                                                                                \
+    {                                                                                                                  \
+    };                                                                                                                 \
+                                                                                                                       \
+    template <typename T>                                                                                              \
+    struct has_##NAME<T, std::void_t<decltype(&enum_utils<T>::NAME)>> : std::true_type                                 \
+    {                                                                                                                  \
+    };                                                                                                                 \
+                                                                                                                       \
+    template <typename T>                                                                                              \
+    inline constexpr bool has_##NAME##_v = has_##NAME<T>::value;
+
+DEFINE_HAS_ENUM_UTILS_MEMBER(to_string)
+DEFINE_HAS_ENUM_UTILS_MEMBER(from_string)
+DEFINE_HAS_ENUM_UTILS_MEMBER(to_char)
+DEFINE_HAS_ENUM_UTILS_MEMBER(from_char)
+DEFINE_HAS_ENUM_UTILS_MEMBER(index)
+DEFINE_HAS_ENUM_UTILS_MEMBER(value_at) // ordinal
+DEFINE_HAS_ENUM_UTILS_MEMBER(value_of) // actual value
+DEFINE_HAS_ENUM_UTILS_MEMBER(repr)
+
+template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
+constexpr bool is_well_ordered = enum_utils<enum_type>::is_well_ordered;
+
+template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
+constexpr enum_utils<enum_type>::idx_type count = enum_utils<enum_type>::count;
+
+template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
+constexpr std::array<enum_type, enum_utils<enum_type>::count> values = enum_utils<enum_type>::values;
+
+template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
+using repr_type = std::array<std::string_view, enum_utils<enum_type>::count>;
+
+template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
+constexpr repr_type<enum_type> repr = enum_utils<enum_type>::repr;
+
+template <typename enum_type>
+[[nodiscard]] constexpr enum_type value_at(const typename enum_utils<enum_type>::idx_type idx)
 {
-    return static_cast<rank_t>(static_cast<int8_t>(sq) >> 3);
+    return  values<enum_type>.at(idx);
 }
 
-constexpr char rank_to_char(const rank_t r) {
-    assert(is_ok(r));
-    return static_cast<char>('1' + r);
-}
-
-constexpr rank_t char_to_rank(const char c) {
-    assert(c >= '1' && c <= '8');
-    return static_cast<rank_t>(c - '1');
-}
-
-inline std::ostream& operator<<(std::ostream& os, const rank_t r) {
-    return os << rank_to_char(r);
-}
-
-
-
-constexpr square_t square(const file_t f, const rank_t r)
+template <typename enum_type>
+[[nodiscard]] constexpr enum_utils<enum_type>::underlying_type value_of(const enum_type val)
 {
-    assert(is_ok(f) && is_ok(r));
-    return static_cast<square_t>(f + r * 8);
+    return enum_utils<enum_type>::value_of(val);
 }
 
-constexpr std::string_view square_to_string(const square_t sq) {
-    assert(is_ok(sq));
-    if (sq == NO_SQUARE)
+template <typename enum_type>
+[[nodiscard]] constexpr enum_utils<enum_type>::idx_type index(const enum_type value)
+{
+    if constexpr (is_well_ordered<enum_type>)
     {
-        return "-";
+        return static_cast<enum_utils<enum_type>::idx_type>(value_of(value));
     }
-    static char buf[3];
-    buf[0] = file_to_char(fl_of(sq));
-    buf[1] = rank_to_char(rk_of(sq));
-    buf[2] = '\0';
-    return {buf, 2};
-}
-
-constexpr square_t string_to_square(const std::string_view s) {
-    if (s.size() == 1)
+    else
     {
-        assert(s[0] == '-');
-        return NO_SQUARE;
-    }
-    if (s.size() == 2)
-    {
-        return square(char_to_file(s[0]), char_to_rank(s[1]));
-    }
-    assert(false && "invalid square string");
-}
-
-inline std::ostream& operator<<(std::ostream& os, const square_t sq) {
-    return os << square_to_string(sq);
-}
-
-
-
-typedef enum piece_type_t : int8_t
-{
-    NO_PIECE_TYPE = -1,
-    PAWN          = 0,
-    KNIGHT,
-    BISHOP,
-    ROOK,
-    QUEEN,
-    KING,
-    NB_PIECE_TYPES
-} piece_type_t;
-
-
-
-inline int piece_value(const piece_type_t p)
-{
-    switch (p)
-    {
-        case PAWN:
-            return 100;
-        case KNIGHT:
-            return 300;
-        case BISHOP:
-            return 325;
-        case ROOK:
-            return 500;
-        case QUEEN:
-            return 900;
-        case KING:
-            return 10000;
-        default:
-            return 0;
+        return enum_utils<enum_type>::index(value);
     }
 }
 
-
-template <typename T>
-using all_piece_types = std::array<T, NB_PIECE_TYPES>;
-
-typedef enum color_t : int8_t
+template <typename enum_type, std::enable_if_t<has_to_string_v<enum_type>, int> = 0>
+[[nodiscard]] constexpr decltype(auto) to_string(const enum_type value)
 {
-    WHITE,
-    BLACK,
-    NB_COLORS,
-    ANY
-} color_t;
-
-constexpr color_t operator!(const color_t c)
-{
-    assert(c == WHITE || c == BLACK);
-    return static_cast<color_t>(static_cast<int>(c) ^ 1);
-}
-constexpr color_t operator~(const color_t c)
-{
-    return !c;
+    return enum_utils<enum_type>::to_string(value);
 }
 
-constexpr char color_to_char(const color_t c)
+template <typename enum_type, std::enable_if_t<!has_to_string_v<enum_type> && has_repr_v<enum_type>, int> = 0>
+[[nodiscard]] constexpr decltype(auto) to_string(const enum_type value)
 {
-    assert(c == WHITE || c == BLACK);
-    return c == WHITE ? 'w' : 'b';
+    return repr<enum_type>.at(index(value));
 }
 
-constexpr color_t char_to_color(const char c)
+template <typename enum_type, std::enable_if_t<has_from_string_v<enum_type>, int> = 0>
+[[nodiscard]] constexpr std::optional<enum_type> from_string(const std::string_view& value)
 {
-    assert(c == 'w' || c == 'b');
-    return static_cast<color_t>(c == 'w' ? WHITE : BLACK);
+    return enum_utils<enum_type>::from_string(value);
 }
 
-inline std::ostream& operator<<(std::ostream& os, const color_t c) {
-    return os << color_to_char(c);
+// slow fallback, please define from string if possible
+template <typename enum_type, std::enable_if_t<!has_from_string_v<enum_type> && has_repr_v<enum_type>, int> = 0>
+[[nodiscard]] constexpr std::optional<enum_type> from_string(const std::string_view& value)
+{
+    const auto it = std::find(repr<enum_type>.begin(), repr<enum_type>.end(), value);
+    if (it == repr<enum_type>.end())
+        return std::nullopt;
+    return values<enum_type>.at(std::distance(repr<enum_type>.begin(), it));
+}
+
+template <typename enum_type>
+[[nodiscard]] constexpr char to_char(const enum_type value)
+{
+    return to_string<enum_type>(value).at(0);
+}
+
+template <typename enum_type>
+[[nodiscard]] constexpr std::optional<enum_type> from_char(const char value)
+{
+    return from_string<enum_type>(std::string_view{&value, 1});
 }
 
 
-
-
-template <typename T>
-using all_colors = std::array<T, NB_COLORS>;
-
-enum piece_t : int8_t
+template <typename enum_type, std::enable_if_t<has_to_string_v<enum_type> || has_repr_v<enum_type>, int> = 0>
+std::ostream& operator<<(std::ostream& os, const enum_type value)
 {
-    NO_PIECE = -1,
-    W_PAWN   = 0,
-    W_KNIGHT,
-    W_BISHOP,
-    W_ROOK,
-    W_QUEEN,
-    W_KING,
-    B_PAWN,
-    B_KNIGHT,
-    B_BISHOP,
-    B_ROOK,
-    B_QUEEN,
-    B_KING,
-    NB_PIECES
-};
-
-constexpr piece_type_t piece_piece_type(const piece_t pc)
-{
-    return static_cast<piece_type_t>(static_cast<int8_t>(pc) % NB_PIECE_TYPES);
+    return os << to_string<enum_type>(value);
 }
 
-constexpr color_t piece_color(const piece_t pc)
-{
-    return static_cast<color_t>(static_cast<int8_t>(pc) >= NB_PIECE_TYPES);
+// Unary minus
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr enum_type operator-(const enum_type rhs) {
+    return enum_type{-value_of(rhs)};
 }
 
-constexpr piece_t piece(const piece_type_t pc, const color_t c)
-{
-    return static_cast<piece_t>(static_cast<int8_t>(pc)  + NB_PIECE_TYPES * static_cast<int8_t>(c));
+// Pre-increment
+template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
+constexpr enum_type& operator++(enum_type& rhs) {
+    rhs = enum_type{value_of(rhs) + 1};
+    return rhs;
 }
 
-inline piece_t char_to_piece(const char c)
+template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
+constexpr enum_type& operator--(enum_type& rhs) {
+    rhs = enum_type{value_of(rhs) - 1};
+    return rhs;
+}
+
+// Post-increment
+template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
+constexpr enum_type operator++(enum_type& rhs, int) {
+    enum_type tmp = rhs;
+    rhs = enum_type{value_of(rhs) + 1};
+    return tmp;
+}
+
+template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
+constexpr enum_type operator--(enum_type& rhs, int) {
+    enum_type tmp = rhs;
+    rhs = enum_type{value_of(rhs) - 1};
+    return tmp;
+}
+
+// Enum + Enum
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr enum_type operator+(const enum_type lhs, const enum_type rhs) {
+    return enum_type{value_of(lhs) + value_of(rhs)};
+}
+
+// Enum + int
+template <typename enum_type, typename int_type,
+          std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
+constexpr enum_type operator+(const enum_type lhs, const int_type rhs) {
+    return enum_type{value_of(lhs) + rhs};
+}
+
+// int + Enum
+template <typename int_type, typename enum_type,
+          std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
+constexpr enum_type operator+(const int_type lhs, const enum_type rhs) {
+    return rhs + lhs;
+}
+
+// Enum - Enum
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr enum_type operator-(const enum_type lhs, const enum_type rhs) {
+    return enum_type{value_of(lhs) - value_of(rhs)};
+}
+
+// Enum - int
+template <typename enum_type, typename int_type,
+          std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
+constexpr enum_type operator-(const enum_type lhs, const int_type rhs) {
+    return enum_type{value_of(lhs) - rhs};
+}
+
+// int - Enum
+template <typename int_type, typename enum_type,
+          std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
+constexpr enum_type operator-(const int_type lhs, const enum_type rhs) {
+    return enum_type{lhs - value_of(rhs)};
+}
+
+// Enum * int
+template <typename enum_type, typename int_type,
+          std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
+constexpr enum_type operator*(const enum_type lhs, const int_type rhs) {
+    return enum_type{value_of(lhs) * rhs};
+}
+
+// int * Enum
+template <typename int_type, typename enum_type,
+          std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
+constexpr enum_type operator*(const int_type lhs, const enum_type rhs) {
+    return rhs * lhs;
+}
+
+// Equality
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr bool operator==(const enum_type lhs, const enum_type rhs) {
+    return value_of(lhs) == value_of(rhs);
+}
+
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr bool operator!=(const enum_type lhs, const enum_type rhs) {
+    return value_of(lhs) != value_of(rhs);
+}
+
+// Comparisons
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr bool operator<(const enum_type lhs, const enum_type rhs) {
+    return value_of(lhs) < value_of(rhs);
+}
+
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr bool operator<=(const enum_type lhs, const enum_type rhs) {
+    return value_of(lhs) <= value_of(rhs);
+}
+
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr bool operator>(const enum_type lhs, const enum_type rhs) {
+    return value_of(lhs) > value_of(rhs);
+}
+
+template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
+constexpr bool operator>=(const enum_type lhs, const enum_type rhs) {
+    return value_of(lhs) >= value_of(rhs);
+}
+
+template <typename enum_type, typename value_type>
+struct enum_array
 {
-    switch (c)
+    static_assert(is_well_ordered<enum_type>, "Enum must be iterable for enum_array");
+
+    static constexpr size_t count = enum_utils<enum_type>::count;
+
+    std::array<value_type, count> m_data;
+
+    constexpr value_type& operator[](enum_type e) noexcept { return m_data[enum_utils<enum_type>::index(e)]; }
+
+    constexpr const value_type& operator[](enum_type e) const noexcept
     {
-        case 'P':
-            return W_PAWN;
-        case 'p':
-            return B_PAWN;
-        case 'N':
-            return W_KNIGHT;
-        case 'n':
-            return B_KNIGHT;
-        case 'B':
-            return W_BISHOP;
-        case 'b':
-            return B_BISHOP;
-        case 'R':
-            return W_ROOK;
-        case 'r':
-            return B_ROOK;
-        case 'Q':
-            return W_QUEEN;
-        case 'q':
-            return B_QUEEN;
-        case 'K':
-            return W_KING;
-        case 'k':
-            return B_KING;
-        default:
-            assert(0 && "Invalid piece character");
-            return NO_PIECE;
+        return m_data.at(index<enum_type>(e));
     }
-}
 
-inline piece_type_t char_to_piece_type(const char c)
-{
-    return piece_piece_type(char_to_piece(c));
-}
+    constexpr value_type& at(enum_type e) { return m_data.at(index(e)); }
 
-inline int piece_value(const piece_t p)
-{
-    return piece_piece_type(p);
-}
+    [[nodiscard]] constexpr const value_type& at(enum_type e) const
+    {
+        return m_data.at(index<enum_type>(e));
+    }
 
-template <typename T>
-using all_pieces = std::array<T, NB_PIECES>;
+    [[nodiscard]] static constexpr size_t size() noexcept { return count; }
 
-inline char piece_to_char(const color_t color, const piece_type_t pt)
-{
-    static all_colors<all_piece_types<char>> pieces = {{'P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k'}};
-    return pieces.at(color).at(pt);
-}
+    constexpr auto               begin() noexcept { return m_data.begin(); }
+    constexpr auto               end() noexcept { return m_data.end(); }
+    [[nodiscard]] constexpr auto begin() const noexcept { return m_data.begin(); }
+    [[nodiscard]] constexpr auto end() const noexcept { return m_data.end(); }
 
-inline char piece_to_char(const piece_t pc)
-{
-    static all_pieces<char> pieces = {{'P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k'}};
-    return pieces.at(pc);
-}
+    [[nodiscard]] constexpr auto values() const noexcept { return enum_utils<enum_type>::values; }
 
-enum direction_t : int8_t
-{
-    NORTH      = 8,
-    EAST       = 1,
-    SOUTH      = -NORTH,
-    WEST       = -EAST,
-    SOUTH_EAST = SOUTH + EAST,
-    SOUTH_WEST = SOUTH + WEST,
-    NORTH_EAST = NORTH + EAST,
-    NORTH_WEST = NORTH + WEST,
-    NB_DIRECTIONS,
-    INVALID = 0
+    constexpr void fill(const value_type& value) { m_data.fill(value); }
+
+    template <typename Func>
+    constexpr void for_each(Func&& f)
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            f(enum_utils<enum_type>::values[i], m_data[i]);
+        }
+    }
+
+    template <typename Func>
+    constexpr void for_each(Func&& f) const
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            f(enum_utils<enum_type>::values[i], m_data[i]);
+        }
+    }
 };
-template <direction_t D>
-constexpr direction_t inverse_dir()
+
+struct file_t
 {
-    static_assert(D != INVALID);
-    return static_cast<direction_t>(-D);
+    using value_type = int8_t;
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit file_t(int_type val)
+        : m_val(static_cast<value_type>(val))
+    {
+        assert(val >= 0 && val <= 8);
+    }
+
+    value_type m_val;
+    friend enum_utils<file_t>;
+};
+
+constexpr file_t FILE_A{0};
+constexpr file_t FILE_B{1};
+constexpr file_t FILE_C{2};
+constexpr file_t FILE_D{3};
+constexpr file_t FILE_E{4};
+constexpr file_t FILE_F{5};
+constexpr file_t FILE_G{6};
+constexpr file_t FILE_H{7};
+constexpr file_t NO_FILE{8};
+
+
+template <>
+struct enum_utils<file_t>
+{
+    using enum_type       = file_t;
+    using idx_type        = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 8;
+
+    //clang-format off
+    static constexpr std::array           values = {FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H};
+    static constexpr repr_type<enum_type> repr   = {"a", "b", "c", "d", "e", "f", "g", "h"};
+    //clang-format on
+
+    static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
+
+    static constexpr std::optional<enum_type> from_string(const std::string_view& value)
+    {
+        if (value.length() != 1) return std::nullopt;
+        const char c = value[0];
+        if (c < 'a' || c > 'h')
+            return std::nullopt;
+        return values.at(c - 'a');
+    }
+};
+
+struct rank_t
+{
+    using value_type = int8_t;
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit rank_t(int_type val)
+        : m_val(static_cast<value_type>(val))
+    {
+        assert(val >= 0 && val <= 8);
+    }
+
+    value_type m_val;
+    friend enum_utils<rank_t>;
+};
+
+constexpr rank_t RANK_1{0};
+constexpr rank_t RANK_2{1};
+constexpr rank_t RANK_3{2};
+constexpr rank_t RANK_4{3};
+constexpr rank_t RANK_5{4};
+constexpr rank_t RANK_6{5};
+constexpr rank_t RANK_7{6};
+constexpr rank_t RANK_8{7};
+constexpr rank_t NO_RANK{8};
+
+
+
+
+template <>
+struct enum_utils<rank_t>
+{
+    using enum_type       = rank_t;
+    using idx_type        = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 8;
+
+    //clang-format off
+    static constexpr std::array           values = {RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8};
+    static constexpr repr_type<enum_type> repr   = {"1", "2", "3", "4", "5", "6", "7", "8"};
+    //clang-format on
+
+    static constexpr underlying_type value_of(const enum_type sq) { return sq.m_val; }
+
+    static constexpr std::optional<enum_type> from_string(const std::string_view& value)
+    {
+        if (value.length() != 1) return std::nullopt;
+        const char c = value[0];
+        if (c < '1' || c > '8')
+            return std::nullopt;
+        return values.at(c - '1');
+    }
+};
+
+using coordinates_t = std::pair<file_t, rank_t>;
+
+struct square_t;
+template <>
+struct enum_utils<square_t>;
+
+struct square_t
+{
+    using value_type = int8_t;
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit square_t(int_type val)
+        : m_val(static_cast<value_type>(val))
+    {
+        assert(val >= 0 && val <= 64);
+    }
+
+    constexpr explicit square_t(const coordinates_t& coordinates)
+        : m_val(static_cast<value_type>(index(coordinates.first) +
+                                    index(coordinates.second) * count<decltype(coordinates.second)>))
+    {
+        assert(m_val >= 0 && m_val <= 63);
+    }
+
+    constexpr explicit square_t(const file_t file, const rank_t rank) : square_t({file, rank})
+    {
+    }
+
+    [[nodiscard]] constexpr file_t file() const noexcept { return file_t{m_val & 7}; }
+
+    [[nodiscard]] constexpr rank_t rank() const noexcept { return rank_t{m_val >> 3}; }
+
+    [[nodiscard]] constexpr coordinates_t coordinates() const noexcept { return {file(), rank()}; }
+
+    [[nodiscard]] constexpr square_t flipped_horizontally() const noexcept
+    {
+        return square_t{file(), RANK_8 - rank()};
+    }
+
+    value_type m_val;
+    friend enum_utils<square_t>;
+};
+
+constexpr square_t A1{{FILE_A, RANK_1}};
+constexpr square_t A2{{FILE_A, RANK_2}};
+constexpr square_t A3{{FILE_A, RANK_3}};
+constexpr square_t A4{{FILE_A, RANK_4}};
+constexpr square_t A5{{FILE_A, RANK_5}};
+constexpr square_t A6{{FILE_A, RANK_6}};
+constexpr square_t A7{{FILE_A, RANK_7}};
+constexpr square_t A8{{FILE_A, RANK_8}};
+
+constexpr square_t B1{{FILE_B, RANK_1}};
+constexpr square_t B2{{FILE_B, RANK_2}};
+constexpr square_t B3{{FILE_B, RANK_3}};
+constexpr square_t B4{{FILE_B, RANK_4}};
+constexpr square_t B5{{FILE_B, RANK_5}};
+constexpr square_t B6{{FILE_B, RANK_6}};
+constexpr square_t B7{{FILE_B, RANK_7}};
+constexpr square_t B8{{FILE_B, RANK_8}};
+
+constexpr square_t C1{{FILE_C, RANK_1}};
+constexpr square_t C2{{FILE_C, RANK_2}};
+constexpr square_t C3{{FILE_C, RANK_3}};
+constexpr square_t C4{{FILE_C, RANK_4}};
+constexpr square_t C5{{FILE_C, RANK_5}};
+constexpr square_t C6{{FILE_C, RANK_6}};
+constexpr square_t C7{{FILE_C, RANK_7}};
+constexpr square_t C8{{FILE_C, RANK_8}};
+
+constexpr square_t D1{{FILE_D, RANK_1}};
+constexpr square_t D2{{FILE_D, RANK_2}};
+constexpr square_t D3{{FILE_D, RANK_3}};
+constexpr square_t D4{{FILE_D, RANK_4}};
+constexpr square_t D5{{FILE_D, RANK_5}};
+constexpr square_t D6{{FILE_D, RANK_6}};
+constexpr square_t D7{{FILE_D, RANK_7}};
+constexpr square_t D8{{FILE_D, RANK_8}};
+
+constexpr square_t E1{{FILE_E, RANK_1}};
+constexpr square_t E2{{FILE_E, RANK_2}};
+constexpr square_t E3{{FILE_E, RANK_3}};
+constexpr square_t E4{{FILE_E, RANK_4}};
+constexpr square_t E5{{FILE_E, RANK_5}};
+constexpr square_t E6{{FILE_E, RANK_6}};
+constexpr square_t E7{{FILE_E, RANK_7}};
+constexpr square_t E8{{FILE_E, RANK_8}};
+
+constexpr square_t F1{{FILE_F, RANK_1}};
+constexpr square_t F2{{FILE_F, RANK_2}};
+constexpr square_t F3{{FILE_F, RANK_3}};
+constexpr square_t F4{{FILE_F, RANK_4}};
+constexpr square_t F5{{FILE_F, RANK_5}};
+constexpr square_t F6{{FILE_F, RANK_6}};
+constexpr square_t F7{{FILE_F, RANK_7}};
+constexpr square_t F8{{FILE_F, RANK_8}};
+
+constexpr square_t G1{{FILE_G, RANK_1}};
+constexpr square_t G2{{FILE_G, RANK_2}};
+constexpr square_t G3{{FILE_G, RANK_3}};
+constexpr square_t G4{{FILE_G, RANK_4}};
+constexpr square_t G5{{FILE_G, RANK_5}};
+constexpr square_t G6{{FILE_G, RANK_6}};
+constexpr square_t G7{{FILE_G, RANK_7}};
+constexpr square_t G8{{FILE_G, RANK_8}};
+
+constexpr square_t H1{{FILE_H, RANK_1}};
+constexpr square_t H2{{FILE_H, RANK_2}};
+constexpr square_t H3{{FILE_H, RANK_3}};
+constexpr square_t H4{{FILE_H, RANK_4}};
+constexpr square_t H5{{FILE_H, RANK_5}};
+constexpr square_t H6{{FILE_H, RANK_6}};
+constexpr square_t H7{{FILE_H, RANK_7}};
+constexpr square_t H8{{FILE_H, RANK_8}};
+
+
+constexpr square_t NO_SQUARE{64};
+
+template <>
+struct enum_utils<square_t>
+{
+    using enum_type       = square_t;
+    using idx_type        = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 65;
+
+    //clang-format off
+    static constexpr std::array values = {A1, B1, C1, D1, E1, F1, G1, H1, A2, B2, C2, D2, E2, F2,       G2, H2, A3,
+                                          B3, C3, D3, E3, F3, G3, H3, A4, B4, C4, D4, E4, F4, G4,       H4, A5, B5,
+                                          C5, D5, E5, F5, G5, H5, A6, B6, C6, D6, E6, F6, G6, H6,       A7, B7, C7,
+                                          D7, E7, F7, G7, H7, A8, B8, C8, D8, E8, F8, G8, H8, NO_SQUARE};
+    static constexpr repr_type<enum_type> repr = {
+        "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1", "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2", "a3",
+        "b3", "c3", "d3", "e3", "f3", "g3", "h3", "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4", "a5", "b5",
+        "c5", "d5", "e5", "f5", "g5", "h5", "a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6", "a7", "b7", "c7",
+        "d7", "e7", "f7", "g7", "h7", "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8", "-"};
+    //clang-format on
+
+    static constexpr idx_type value_of(const enum_type sq) { return static_cast<idx_type>(sq.m_val); }
+
+    static constexpr std::optional<enum_type> from_string(const std::string_view& value)
+    {
+        if (value.length() == 1 && value[0] == '-')
+        {
+            return NO_SQUARE;
+        }
+        if (value.length() == 2)
+        {
+            const auto file = from_char<file_t>(value.at(0));
+            const auto rank = from_char<rank_t>(value.at(1));
+
+            if (file && rank)
+            {
+                return square_t{{file.value(), rank.value()}};
+            }
+        }
+        return std::nullopt;
+    }
+};
+
+
+struct piece_type_t
+{
+    using value_type = int8_t;
+
+    constexpr piece_type_t() : m_val(0) {};
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit piece_type_t(int_type val)
+        : m_val(static_cast<value_type>(val))
+    {
+        assert(val >= 0 && val <= 7);
+    }
+
+    using piece_value_type = int;
+    [[nodiscard]] constexpr piece_value_type value() const;
+
+    value_type m_val;
+    friend enum_utils<piece_type_t>;
+};
+
+constexpr piece_type_t PAWN{0};
+constexpr piece_type_t KNIGHT{1};
+constexpr piece_type_t BISHOP{2};
+constexpr piece_type_t ROOK{3};
+constexpr piece_type_t QUEEN{4};
+constexpr piece_type_t KING{5};
+constexpr piece_type_t NO_PIECE_TYPE{6};
+
+
+
+template <>
+struct enum_utils<piece_type_t>
+{
+    using enum_type       = piece_type_t;
+    using idx_type        = uint8_t;
+    using underlying_type = int8_t;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 7;
+
+    static constexpr std::array<enum_type, count> values = {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, NO_PIECE_TYPE};
+    static constexpr repr_type<enum_type>         repr   = {"p", "n", "b", "r", "q", "k", "-"};
+
+    static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
+};
+
+inline enum_array<piece_type_t, int> piece_type_value{100, 300, 325, 500, 900, 1000};
+
+[[nodiscard]] constexpr piece_type_t::piece_value_type piece_type_t::value() const { return piece_type_value.at(*this); }
+
+struct color_t
+{
+    using value_type = uint8_t;
+
+    constexpr color_t() : m_val(0) {};
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit color_t(int_type val)
+        : m_val(static_cast<value_type>(val))
+    {
+        assert(val == 0 || val == 1);
+    }
+
+    constexpr color_t operator!() const
+    {
+        return color_t(static_cast<value_type>(m_val ^ 1));
+    }
+    constexpr color_t operator~() const { return !(*this); }
+
+    value_type m_val;
+    friend enum_utils<color_t>;
+};
+
+constexpr color_t WHITE{0};
+constexpr color_t BLACK{1};
+
+template <>
+struct enum_utils<color_t>
+{
+    using enum_type       = color_t;
+    using idx_type        = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 2;
+
+    static constexpr std::array           values = {WHITE, BLACK};
+    static constexpr repr_type<enum_type> repr   = {"w", "b"};
+
+    static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
+
+    static constexpr std::optional<enum_type> from_string(const std::string_view& value)
+    {
+        if (value == "w")
+            return WHITE;
+        if (value == "b")
+            return BLACK;
+        return std::nullopt;
+    }
+};
+
+struct piece_t
+{
+    using value_type = uint8_t;
+
+    constexpr piece_t() : m_val(12) {}
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit piece_t(int_type val)
+        : m_val(static_cast<value_type>(val))
+    {
+        assert(val >= 0 && val <= 12);
+    }
+    explicit constexpr piece_t(const color_t c, const piece_type_t pt)
+        : piece_t(index(c) + (index(pt) << 1))
+    {
+    }
+
+
+    [[nodiscard]] constexpr piece_type_t type() const { return value_at<piece_type_t>(m_val >> 1); }
+
+    [[nodiscard]] constexpr color_t color() const { return value_at<color_t>(m_val & 1); }
+
+    using piece_value_t = int;
+    [[nodiscard]] constexpr piece_value_t value() const { return piece_type_value.at(this->type()); }
+
+  private:
+    value_type m_val;
+    friend enum_utils<piece_t>;
+};
+
+constexpr piece_t W_PAWN{WHITE, PAWN};
+constexpr piece_t W_KNIGHT{WHITE, KNIGHT};
+constexpr piece_t W_BISHOP{WHITE, BISHOP};
+constexpr piece_t W_ROOK{WHITE, ROOK};
+constexpr piece_t W_QUEEN{WHITE, QUEEN};
+constexpr piece_t W_KING{WHITE, KING};
+constexpr piece_t B_PAWN{BLACK, PAWN};
+constexpr piece_t B_KNIGHT{BLACK, KNIGHT};
+constexpr piece_t B_BISHOP{BLACK, BISHOP};
+constexpr piece_t B_ROOK{BLACK, ROOK};
+constexpr piece_t B_QUEEN{BLACK, QUEEN};
+constexpr piece_t B_KING{BLACK, KING};
+constexpr piece_t NO_PIECE{12};
+
+template <>
+struct enum_utils<piece_t>
+{
+    using enum_type = piece_t;
+    using idx_type  = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 13;
+
+    static constexpr std::array<enum_type, count> values = {W_PAWN,  B_PAWN, W_KNIGHT, B_KNIGHT, W_BISHOP,
+                                                            B_BISHOP,  W_ROOK,   B_ROOK, W_QUEEN, B_QUEEN,
+                                                            W_KING, B_KING,   NO_PIECE};
+    static constexpr repr_type<piece_t> repr   = {"P", "p", "N", "n","B", "b","R", "r","Q", "q","K", "k", "-"};
+
+    static constexpr underlying_type value_of(const enum_type val)
+    {
+        return val.m_val;
+    }
+};
+
+struct direction_t
+{
+    using value_type = int8_t;
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type> && std::is_signed_v<int_type>, int> = 0>
+    constexpr explicit direction_t(int_type val)
+        : m_offset(static_cast<value_type>(val))
+    {
+        assert(val >= -64 && val <= 64);
+    }
+
+
+
+    value_type m_offset;
+};
+
+constexpr direction_t NORTH{8};
+constexpr direction_t EAST{1};
+constexpr direction_t SOUTH{-8};
+constexpr direction_t WEST{-1};
+constexpr direction_t NORTH_EAST{8 + 1};
+constexpr direction_t NORTH_WEST{8 - 1};
+constexpr direction_t SOUTH_EAST{-8 + 1};
+constexpr direction_t SOUTH_WEST{-8 - 1};
+constexpr direction_t NO_DIRECTION{0};
+
+template <>
+struct enum_utils<direction_t>
+{
+    using enum_type = direction_t;
+    using idx_type  = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = false;
+    static constexpr idx_type count           = 9;
+
+    //clang-format off
+    static constexpr std::array<enum_type, count> values = {NORTH, NORTH_EAST, EAST, SOUTH_EAST,
+                                                            SOUTH, SOUTH_WEST, WEST, NORTH_WEST,
+                                                            NO_DIRECTION};
+    //clang-format on
+
+    static constexpr underlying_type value_of(const enum_type val)
+    {
+        return val.m_offset;
+    }
+
+    static constexpr idx_type index(const enum_type dir)
+    {
+        switch (dir.m_offset)
+        {
+            case NORTH.m_offset:
+                return 0;
+            case NORTH_EAST.m_offset:
+                return 1;
+            case EAST.m_offset:
+                return 2;
+            case SOUTH_EAST.m_offset:
+                return 3;
+            case SOUTH.m_offset:
+                return 4;
+            case SOUTH_WEST.m_offset:
+                return 5;
+            case WEST.m_offset:
+                return 6;
+            case NORTH_WEST.m_offset:
+                return 7;
+            case NO_DIRECTION.m_offset:
+                return 8;
+            default:
+                assert(false);
+        }
+        assert(false);
+        return 0;
+    }
+};
+
+constexpr square_t operator+(const square_t s, const direction_t d)
+{
+    return square_t{s + value_of(d)};
 }
+
+constexpr square_t operator-(const square_t s, const direction_t d)
+{
+    return square_t{s - value_of(d)};
+}
+
+
+template <direction_t d>
+constexpr direction_t inverse_dir = -d;
+
+template <color_t c, direction_t d>
+constexpr direction_t relative_dir = c == WHITE ? d : inverse_dir<d>;
+
+template <color_t c, rank_t r>
+constexpr rank_t relative_rank = c == WHITE ? r : RANK_8 - r;
+
+template <color_t c, file_t f>
+constexpr file_t relative_file = f;
+
+template <color_t c, square_t sq>
+constexpr auto relative_square = square_t{relative_file<c, sq.file()>, relative_rank<c, sq.rank()>};
+
 
 constexpr direction_t direction_from(const square_t a, const square_t b)
 {
-    const int       dr = rk_of(b) - rk_of(a);
-    const int df = fl_of(b) - fl_of(a);
+    const int dr = value_of(b.rank()) - value_of(a.rank());
+    const int df = value_of(b.file()) - value_of(a.file());
 
     if (dr == 0 && df > 0)
         return EAST;
@@ -383,42 +870,53 @@ constexpr direction_t direction_from(const square_t a, const square_t b)
     if (dr == -df && dr < 0)
         return SOUTH_EAST;
 
-    return INVALID;
+    return NO_DIRECTION;
 }
 
-
-
-template <std::unsigned_integral T>
-constexpr int popcount(const T x) noexcept
+namespace bit
 {
-    return std::popcount(x);
-}
+    template <std::unsigned_integral T>
+    constexpr int popcount(const T x) noexcept
+    {
+        return std::popcount(x);
+    }
 
-template <std::unsigned_integral T>
-constexpr int get_lsb(const T bb) noexcept
-{
-    return std::countr_zero(bb);
-}
+    template <std::unsigned_integral T>
+    constexpr int get_lsb(const T bb) noexcept
+    {
+        return std::countr_zero(bb);
+    }
 
-template <std::unsigned_integral T>
-constexpr int get_msb(const T bb) noexcept
-{
-    return std::countl_zero(bb);
-}
+    template <std::unsigned_integral T>
+    constexpr int get_msb(const T bb) noexcept
+    {
+        return std::countl_zero(bb);
+    }
 
+    template <std::unsigned_integral T>
+    constexpr int pop_lsb(T& bb) noexcept
+    {
+        int n = std::countr_zero(bb);
+        bb &= ~(static_cast<T>(1) << n);
+        return n;
+    }
 
-template <std::unsigned_integral T>
-constexpr int pop_lsb(T& bb) noexcept
-{
-    int n = std::countr_zero(bb);
-    bb &= ~(static_cast<T>(1) << n);
-    return n;
+    template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
+    constexpr T shift_left(const T value, const unsigned shift) {
+        //assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
+        return value << shift;
+    }
+
+    template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
+    constexpr T shift_right(const T value, const unsigned shift) {
+        //assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
+        return value >> shift;
+    }
 }
 
 constexpr size_t MAX_PLY = 255;
 
 constexpr int MATE_SCORE = 100000;
-constexpr int INFINITE = 1000000;
-
+constexpr int INFINITE   = 1000000;
 
 #endif

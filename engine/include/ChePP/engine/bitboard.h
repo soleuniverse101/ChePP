@@ -6,267 +6,347 @@
 #include <cstdlib>
 #include <string>
 
-namespace Bitboard
+class bitboard_t
 {
-    constexpr bitboard_t empty  = 0ULL;
-    constexpr bitboard_t full   = ~empty;
-    constexpr bitboard_t file_a = 0x0101010101010101ULL;
-    constexpr bitboard_t rank_a = 0x00000000000000FFULL;
+  public:
+    using bitboard_type = uint64_t;
 
-    constexpr bitboard_t fl_mask(const file_t file)
+    static void        init();
+    [[nodiscard]] std::string to_string() const;
+
+    bitboard_t() = default;
+    explicit constexpr bitboard_t(const bitboard_type value) : m_data(value) {}
+
+    [[nodiscard]] constexpr bitboard_type value() const { return m_data; }
+    explicit constexpr                    operator bitboard_type() const { return m_data; }
+
+    constexpr bitboard_t& operator=(const bitboard_type value)
     {
-        return file_a << static_cast<int8_t>(file);
+        m_data = value;
+        return *this;
     }
 
-    constexpr bitboard_t rk_mask(const rank_t rank)
+    constexpr bitboard_t operator~() const { return bitboard_t(~m_data); }
+    constexpr bitboard_t operator|(const bitboard_t other) const { return bitboard_t(m_data | other.m_data); }
+    constexpr bitboard_t operator&(const bitboard_t other) const { return bitboard_t(m_data & other.m_data); }
+    constexpr bitboard_t operator^(const bitboard_t other) const { return bitboard_t(m_data ^ other.m_data); }
+
+    constexpr bitboard_t operator*(const bitboard_type other) const { return bitboard_t(m_data * other); }
+
+    constexpr bitboard_t& operator|=(const bitboard_t other)
     {
-        return rank_a << (static_cast<int8_t>(rank) * 8);
+        m_data |= other.m_data;
+        return *this;
+    }
+    constexpr bitboard_t& operator&=(const bitboard_t other)
+    {
+        m_data &= other.m_data;
+        return *this;
+    }
+    constexpr bitboard_t& operator^=(const bitboard_t other)
+    {
+        m_data ^= other.m_data;
+        return *this;
     }
 
-    constexpr bitboard_t sq_mask(const square_t sq)
+    constexpr bitboard_t operator<<(const int shift) const { return bitboard_t(m_data << shift); }
+    constexpr bitboard_t operator>>(const int shift) const { return bitboard_t(m_data >> shift); }
+
+    constexpr bitboard_t& operator<<=(const int shift)
     {
-        return static_cast<bitboard_t>(1) << static_cast<int8_t>(sq);
+        m_data <<= shift;
+        return *this;
+    }
+    constexpr bitboard_t& operator>>=(const int shift)
+    {
+        m_data >>= shift;
+        return *this;
     }
 
-    constexpr bitboard_t fl_mask(const square_t sq)
-    {
-        return fl_mask(fl_of(sq));
-    }
+    constexpr bool     operator==(const bitboard_t other) const { return m_data == other.m_data; }
+    constexpr bool     operator!=(const bitboard_t other) const { return m_data != other.m_data; }
+    constexpr explicit operator bool() const { return m_data != 0; }
 
-    constexpr bitboard_t rk_mask(const square_t sq)
-    {
-        return rk_mask(rk_of(sq));
-    }
+    [[nodiscard]] constexpr bool is_set(const int bit) const { return (m_data >> bit) & 1ULL; }
+    void                         set(const int bit) { m_data |= (1ULL << bit); }
+    void                         reset(const int bit) { m_data &= ~(1ULL << bit); }
+    void                         flip(const int bit) { m_data ^= (1ULL << bit); }
 
-    constexpr bitboard_t sides =
-        fl_mask(FILE_A) | fl_mask(FILE_H) | rk_mask(RANK_1) | rk_mask(RANK_8);
-    constexpr bitboard_t corners = sq_mask(A1) | sq_mask(A8) | sq_mask(H1) | sq_mask(H8);
+    static constexpr bitboard_t empty() { return bitboard_t{0}; }
+    static constexpr bitboard_t full() { return ~empty(); }
 
-    extern all_squares<all_squares<bitboard_t>> g_from_to;
-    extern all_squares<all_squares<bitboard_t>> g_lines;
+    static constexpr bitboard_t file(const file_t file) { return bitboard_t{file_a << index(file)}; }
+    static constexpr bitboard_t file(const square_t sq) { return bitboard_t{file_a << index(sq.file())}; }
+    static constexpr bitboard_t rank(const rank_t rank) { return bitboard_t{rank_a << index(rank) * count<rank_t>}; }
+    static constexpr bitboard_t rank(const square_t sq)
+    {
+        return bitboard_t{rank_a << index(sq.rank()) * count<rank_t>};
+    }
+    static constexpr bitboard_t square(const square_t sq) { return bitboard_t{1} << index(sq); }
 
-    inline bitboard_t from_to_incl(const square_t from, const square_t to)
+    static constexpr bitboard_t sides() { return file(FILE_A) | file(FILE_H) | rank(RANK_1) | rank(RANK_8); };
+    static constexpr bitboard_t corners() { return square(A1) | square(A8) | square(H1) | square(H8); }
+
+    [[nodiscard]] constexpr int popcount() const { return bit::popcount(m_data); }
+    [[nodiscard]] constexpr int get_lsb() const { return bit::get_lsb(m_data); }
+    [[nodiscard]] constexpr int pops_lsb() { return bit::pop_lsb(m_data); }
+    [[nodiscard]] constexpr int get_msb() const { return bit::get_msb(m_data); }
+
+    static bitboard_t from_to_incl(const square_t from, const square_t to) { return s_from_to.at(from).at(to); }
+    static bitboard_t from_to_excl(const square_t from, const square_t to)
     {
-        return g_from_to.at(from).at(to);
+        return from_to_incl(from, to) & ~square(from) & ~square(to);
     }
-    inline bitboard_t from_to_excl(const square_t from, const square_t to)
-    {
-        return from_to_incl(from, to) & ~sq_mask(from) & ~sq_mask(to);
-    }
-    inline bitboard_t line(const square_t from, const square_t to)
-    {
-        return g_lines.at(from).at(to);
-    }
-    inline bool are_aligned(const square_t sq1, const square_t sq2, const square_t sq3)
+    static bitboard_t line(const square_t from, const square_t to) { return s_lines.at(from).at(to); }
+
+    static bool are_aligned(const square_t sq1, const square_t sq2, const square_t sq3)
     {
         return line(sq1, sq2) == line(sq2, sq3);
     }
 
+    template <piece_type_t pc>
+    static bitboard_t attacks(square_t sq, bitboard_t occupancy = empty(), color_t c = WHITE);
+    static bitboard_t attacks(piece_type_t pt, square_t sq, bitboard_t occupancy = empty(), color_t c = WHITE);
+
     template <direction_t dir>
-    constexpr bitboard_t direction_mask()
-    {
-        switch (dir)
-        {
-            case EAST:
-            case NORTH_EAST:
-            case SOUTH_EAST:
-                return ~fl_mask(FILE_H);
-            case WEST:
-            case NORTH_WEST:
-            case SOUTH_WEST:
-                return ~fl_mask(FILE_A);
-            case INVALID:
-                assert(0 && "invalid direction");
-            case NORTH:
-            case SOUTH:
-            default:
-                return full;
-        }
-    }
+    static constexpr bitboard_t direction_mask();
 
     template <direction_t... Dirs>
-    constexpr bitboard_t shift(bitboard_t bb)
-    {
-        if constexpr (sizeof...(Dirs) == 0)
-        {
-            return bb;
-        }
-        else if constexpr (sizeof...(Dirs) == 1)
-        {
-            constexpr direction_t dir  = std::get<0>(std::tuple{Dirs...});
-            constexpr bitboard_t  mask = direction_mask<dir>();
-            return dir > 0 ? (bb & mask) << dir : (bb & mask) >> -dir;
-        }
-        else
-        {
-            ((bb = shift<Dirs>(bb)), ...);
-            return bb;
-        }
-    }
+    static constexpr bitboard_t shift(bitboard_t bb);
 
     template <direction_t... Dirs>
-    constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, int len = 7)
-    {
-        len = len > 7 ? 7 : len;
-
-        if (len < 0)
-        {
-            return ray<inverse_dir<Dirs>()...>(sq, blockers, -len);
-        }
-
-        if constexpr (sizeof...(Dirs) == 1)
-        {
-            constexpr direction_t Dir     = std::get<0>(std::tuple{Dirs...});
-            bitboard_t            attacks = 0;
-            bitboard_t            bb      = shift<Dir>(sq_mask(sq));
-            for (int i = 0; i < len && bb; ++i)
-            {
-                attacks |= bb;
-                if (bb & blockers)
-                    break;
-                bb = shift<Dir>(bb);
-            }
-            return attacks;
-        }
-        else
-        {
-            return (ray<Dirs>(sq, blockers, len) | ...);
-        }
-    }
+    static constexpr bitboard_t ray(square_t sq, bitboard_t blockers = empty(), int len = 7);
 
     template <piece_type_t pc>
-    constexpr bitboard_t ray(const square_t sq, const bitboard_t blockers = 0, int len = 7)
-    {
-        static_assert(pc == BISHOP || pc == ROOK);
-        len = len > 7 ? 7 : len;
-        return pc == BISHOP ? ray<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(sq, blockers, len)
-                            : ray<NORTH, SOUTH, EAST, WEST>(sq, blockers, len);
-    }
+    static constexpr bitboard_t ray(square_t sq, bitboard_t blockers = empty(), int len = 7);
 
-    extern all_piece_types<all_squares<bitboard_t>> g_piece_pseudo_attacks;
-    extern all_colors<all_squares<bitboard_t>>      g_pawn_pseudo_attacks;
-
-    // Returns the base attack of a piece at a square sq. Base attacks assume an empty board
     template <piece_type_t pc>
-    constexpr bitboard_t pseudo_attack(const square_t sq, const color_t c)
-    {
-        return (pc == PAWN) ? g_pawn_pseudo_attacks.at(c).at(sq) : g_piece_pseudo_attacks.at(pc).at(sq);
-    }
+    static constexpr bitboard_t pseudo_attack(square_t sq, color_t c);
 
-    void init();
-    std::string string(bitboard_t bb);
+  private:
 
+    static void init_from_to();
+    static void init_pseudo_attacks();
 
-} // namespace Bitboard
-namespace bb = Bitboard;
+    bitboard_type m_data;
 
+    static enum_array<square_t, enum_array<square_t, bitboard_t>> s_from_to;
+    static enum_array<square_t, enum_array<square_t, bitboard_t>> s_lines;
 
-struct magic_val_t
-{
-    bitboard_t  mask;
-    uint64_t    shift;
-    bitboard_t  magic;
-    std::size_t offset;
-    [[nodiscard]] bitboard_t  index(const bitboard_t blockers) const
-    {
-        return offset + (((blockers & mask) * magic) >> shift);
-    }
+    static enum_array<piece_type_t, enum_array<square_t, bitboard_t>> s_piece_pseudo_attacks;
+    static enum_array<color_t, enum_array<square_t, bitboard_t>>      s_pawn_pseudo_attacks;
+
+    static constexpr bitboard_type file_a = 0x0101010101010101ULL;
+    static constexpr bitboard_type rank_a = 0x00000000000000FFULL;
 };
 
-template <piece_type_t pc>
-struct magics_t
+using bb = bitboard_t;
+
+inline void bitboard_t::init()
 {
-    static constexpr std::size_t compute_magic_sz();
-    static constexpr std::size_t attacks_sz = compute_magic_sz();
+    init_pseudo_attacks();
+    init_from_to();
+}
 
-    magics_t();
-    [[nodiscard]] bitboard_t attack(square_t sq, bitboard_t occupancy) const;
+template <direction_t dir>
+constexpr bitboard_t bitboard_t::direction_mask()
+{
+    if constexpr (dir == NO_DIRECTION)
+        assert(0 && "invalid direction");
+    else if constexpr (dir == EAST || dir == NORTH_EAST || dir == SOUTH_EAST)
+        return ~file(FILE_H);
+    else if constexpr (dir == WEST || dir == NORTH_WEST || dir == SOUTH_WEST)
+        return ~file(FILE_A);
+    else
+        return full();
+}
 
-    all_squares<magic_val_t>           magic_vals = {};
-    std::array<bitboard_t, attacks_sz> attacks    = {};
-};
+template <direction_t... Dirs>
+constexpr bitboard_t bitboard_t::shift(bitboard_t bb)
+{
+    if constexpr (sizeof...(Dirs) == 0)
+    {
+        return bb;
+    }
+    else if constexpr (sizeof...(Dirs) == 1)
+    {
+        constexpr direction_t dir  = std::get<0>(std::tuple{Dirs...});
+        constexpr bitboard_t  mask = direction_mask<dir>();
+        return dir.m_offset > 0 ? (bb & mask) << dir.m_offset : (bb & mask) >> -dir.m_offset;
+    }
+    else
+    {
+        ((bb = shift<Dirs>(bb)), ...);
+        return bb;
+    }
+}
+
+template <direction_t... Dirs>
+constexpr bitboard_t bitboard_t::ray(const square_t sq, const bitboard_t blockers, int len)
+{
+    len = len > 7 ? 7 : len;
+
+    if (len < 0)
+    {
+        return ray<-Dirs...>(sq, blockers, len);
+    }
+
+    if constexpr (sizeof...(Dirs) == 1)
+    {
+        constexpr direction_t Dir     = std::get<0>(std::tuple{Dirs...});
+        bitboard_t            attacks = empty();
+        bitboard_t            bb      = shift<Dir>(square(sq));
+        for (int i = 0; i < len && bb; ++i)
+        {
+            attacks |= bb;
+            if ((bb & blockers) != empty())
+                break;
+            bb = shift<Dir>(bb);
+        }
+        return attacks;
+    }
+    else
+    {
+        return (ray<Dirs>(sq, blockers, len) | ...);
+    }
+}
 
 template <piece_type_t pc>
-constexpr bitboard_t relevancy_mask(const square_t sq)
+constexpr bitboard_t bitboard_t::ray(const square_t sq, const bitboard_t blockers, int len)
 {
-    bitboard_t mask = ~bb::sides;
+    static_assert(pc == BISHOP || pc == ROOK);
+    len = len > 7 ? 7 : len;
+    if constexpr (pc == BISHOP)
+        return ray<NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST>(sq, blockers, len);
+    else if constexpr (pc == ROOK)
+        return ray<NORTH, SOUTH, EAST, WEST>(sq, blockers, len);
+    else
+        return empty();
+}
+
+template <piece_type_t pc>
+constexpr bitboard_t bitboard_t::pseudo_attack(const square_t sq, const color_t c)
+{
+    if constexpr (pc == PAWN)
+        return s_pawn_pseudo_attacks.at(c).at(sq);
+    else if constexpr (pc == KNIGHT || pc == BISHOP || pc == ROOK || pc == QUEEN || pc == KING)
+        return s_piece_pseudo_attacks.at(pc).at(sq);
+    else
+        return empty();
+}
+
+template <piece_type_t pc>
+constexpr bitboard_t relevancy_mask(square_t sq)
+{
+    bitboard_t mask = ~bb::sides();
     if constexpr (pc == ROOK)
     {
-        if (rk_of(sq) == RANK_1 || rk_of(sq) == RANK_8)
+        if (sq.rank() == RANK_1 || sq.rank() == RANK_8)
         {
-            mask |= bb::rk_mask(sq);
+            mask |= bb::rank(sq);
         }
-        if (fl_of(sq) == FILE_A || fl_of(sq) == FILE_H)
+        if (sq.file() == FILE_A || sq.file() == FILE_H)
         {
-            mask |= bb::fl_mask(sq);
+            mask |= bb::file(sq);
         }
-        mask &= ~bb::corners;
+        mask &= ~bb::corners();
     }
     return bb::ray<pc>(sq) & mask;
 }
 
 template <piece_type_t pc>
-bitboard_t magics_t<pc>::attack(const square_t sq, const bitboard_t occupancy) const
-{
-    return attacks.at(magic_vals.at(sq).index(occupancy));
-}
-
-template <piece_type_t pc>
-constexpr size_t magics_t<pc>::compute_magic_sz()
+constexpr std::size_t compute_magic_sz()
 {
     size_t ret = 0;
-    for (square_t sq = A1; sq < NB_SQUARES; sq = static_cast<square_t>(sq + 1))
+    for (auto sq = A1; sq <= H8; ++sq)
     {
-        ret += 1ULL << (popcount(relevancy_mask<pc>(sq)));
+        ret += 1ULL << relevancy_mask<pc>(sq).popcount();
     }
     return ret;
 }
 
-template struct magics_t<ROOK>;
-template struct magics_t<BISHOP>;
+template <piece_type_t pc>
+struct magics_t
+{
+    struct magic_val_t
+    {
+        using shift_type = int32_t;
+        using index_type = uint32_t;
+        using magic_type = bitboard_t::bitboard_type;
+        using mask_type = bitboard_t;
+
+
+
+        mask_type                mask;
+        magic_type                magic;
+        shift_type                shift;
+        index_type                offset;
+
+        [[nodiscard]] index_type index(const bitboard_t blockers) const
+        {
+            return offset + (((blockers & mask).value() * magic) >> shift);
+        }
+    };
+    static constexpr std::size_t sz = compute_magic_sz<pc>();
+
+    magics_t();
+    [[nodiscard]] bitboard_t attack(const square_t sq, const bitboard_t occupancy) const
+    {
+        return attacks.at(magic_vals.at(sq).index(occupancy));
+    }
+
+    enum_array<square_t, magic_val_t> magic_vals = {};
+    std::array<bitboard_t, sz>        attacks    = {};
+};
+
+using rook_magics   = magics_t<ROOK>;
+using bishop_magics = magics_t<BISHOP>;
 
 template <piece_type_t pc>
 extern magics_t<pc> g_magics;
 
-namespace Bitboard
+template <piece_type_t pc>
+bitboard_t bitboard_t::attacks(const square_t sq, const bitboard_t occupancy, const color_t c)
 {
-    template <piece_type_t pc>
-    constexpr bitboard_t attacks(const square_t sq, const bitboard_t occupancy = empty,
-                                 const color_t c = WHITE)
+    if constexpr (pc == ROOK || pc == BISHOP)
     {
-        if constexpr (pc == ROOK || pc == BISHOP)
-        {
-            return g_magics<pc>.attack(sq, occupancy);
-        }
-        else if constexpr (pc == QUEEN)
-        {
-            return attacks<BISHOP>(sq, occupancy, c) | attacks<ROOK>(sq, occupancy, c);
-        }
-        else
-        {
-            return pseudo_attack<pc>(sq, c);
-        }
+        return g_magics<pc>.attack(sq, occupancy);
     }
-    constexpr bitboard_t attacks(const piece_type_t pt, const square_t sq, const bitboard_t occupancy = empty, const color_t c = WHITE)
+    else if constexpr (pc == QUEEN)
     {
-        switch (pt)
-        {
-            case (PAWN):
-                return attacks<PAWN>(sq, occupancy, c);
-            case (KNIGHT):
-                return attacks<KNIGHT>(sq, occupancy, c);
-            case (BISHOP):
-                return attacks<BISHOP>(sq, occupancy, c);
-            case (ROOK):
-                return attacks<ROOK>(sq, occupancy, c);
-            case (QUEEN):
-                return attacks<QUEEN>(sq, occupancy, c);
-            case (KING):
-                return attacks<KING>(sq, occupancy, c);
-            default:
-                assert(0 && "invalie piece type");
-                return bb::empty;
-        }
+        return attacks<BISHOP>(sq, occupancy) | attacks<ROOK>(sq, occupancy);
     }
-} // namespace Bitboard
+    else if constexpr (pc == PAWN || pc == KNIGHT || pc == KING)
+    {
+        return bb::pseudo_attack<pc>(sq, c);
+    }
+    else
+    {
+        assert(false && "invalid piece type");
+        return bb::empty();
+    }
+}
+inline bitboard_t bitboard_t::attacks(const piece_type_t pt, const square_t sq, const bitboard_t occupancy,
+                                      const color_t c)
+{
+    switch (index(pt))
+    {
+        case index(PAWN):
+            return attacks<PAWN>(sq, occupancy, c);
+        case index(KNIGHT):
+            return attacks<KNIGHT>(sq, occupancy, c);
+        case index(BISHOP):
+            return attacks<BISHOP>(sq, occupancy, c);
+        case index(ROOK):
+            return attacks<ROOK>(sq, occupancy, c);
+        case index(QUEEN):
+            return attacks<QUEEN>(sq, occupancy, c);
+        case index(KING):
+            return attacks<KING>(sq, occupancy, c);
+        default:
+            assert(0 && "invalid piece type");
+            return bb::empty();
+    }
+}
+
 #endif

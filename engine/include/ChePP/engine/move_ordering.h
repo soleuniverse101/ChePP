@@ -8,6 +8,7 @@
 #include "algorithm"
 #include "movegen.h"
 #include "types.h"
+#include <vector>
 
 inline int score_move(const move_t& m, const position_t& pos, const move_t prev_best) {
     if (m == prev_best) {
@@ -21,26 +22,26 @@ inline int score_move(const move_t& m, const position_t& pos, const move_t prev_
     int score = 0;
 
     if (captured != NO_PIECE) {
-        score += 10'000 + 10 * piece_value(captured) - piece_value(attacker);
+        score += 10'000 + 10 * captured.value() - attacker.value();
     }
 
     if (m.type_of() == PROMOTION) {
-        score += 8'000 + piece_value(static_cast<piece_t>(m.promotion_type()));
+        score += 8'000 + m.promotion_type().value();
     }
 
     if (m.type_of() == CASTLING) {
         score += 20'000;
     }
 
-    const int attacker_val = piece_value(attacker);
+    const int attacker_val = attacker.value();
 
     if (from_attackers) {
         int min_enemy_val = 10000;
         bitboard_t b = from_attackers;
         while (b) {
-            square_t sq = static_cast<square_t>(pop_lsb(b));
+            const square_t sq{b.pops_lsb()};
             piece_t p = pos.piece_at(sq);
-            min_enemy_val = std::min(min_enemy_val, piece_value(p));
+            min_enemy_val = std::min(min_enemy_val, p.value());
         }
         int diff = attacker_val - min_enemy_val;
         if (diff < 0) diff = 0;
@@ -51,21 +52,21 @@ inline int score_move(const move_t& m, const position_t& pos, const move_t prev_
         int min_enemy_val = 10000;
         bitboard_t b = to_attackers;
         while (b) {
-            square_t sq = static_cast<square_t>(pop_lsb(b));
+            const square_t sq{b.pops_lsb()};
             piece_t p = pos.piece_at(sq);
-            min_enemy_val = std::min(min_enemy_val, piece_value(p));
+            min_enemy_val = std::min(min_enemy_val, p.value());
         }
         int diff = min_enemy_val - attacker_val;
         if (diff < 0) diff = 0;
         score -= 7 * diff;
     }
 
-    if (bitboard_t b = bb::attacks(piece_piece_type(attacker), m.to_sq()) & pos.color_occupancy(~pos.color())) {
+    if (bitboard_t b = bb::attacks(attacker.type(), m.to_sq()) & pos.color_occupancy(~pos.color())) {
         int max_enemy_val = 0;
         while (b) {
-            square_t sq = static_cast<square_t>(pop_lsb(b));
+            const square_t sq{b.pops_lsb()};
             piece_t p = pos.piece_at(sq);
-            max_enemy_val = std::max(max_enemy_val, piece_value(p));
+            max_enemy_val = std::max(max_enemy_val, p.value());
         }
         int diff = max_enemy_val - attacker_val;
         if (diff < 0) diff = 0;

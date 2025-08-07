@@ -41,10 +41,10 @@ public:
     }
     void promote_piece(const color_t c, const piece_type_t pt, const square_t sq)
     {
-        flip_piece(piece(PAWN, c), sq);
-        flip_piece(piece(pt, c), sq);
+        flip_piece(piece_t{c, PAWN}, sq);
+        flip_piece(piece_t{c, pt}, sq);
     }
-    void flip_castling_rights(uint8_t mask)
+    void flip_castling_rights(const uint8_t mask)
     {
         /**
         while (const int idx = pop_lsb(mask) < NB_CASTLING_TYPES)
@@ -69,8 +69,8 @@ public:
         m_hash ^= s_side;
     }
 
-    static all_pieces<all_squares<hash_t>> s_psq;
-    static all_files<hash_t>                    s_ep;
+    static enum_array<piece_t, enum_array<square_t, hash_t>> s_psq;
+    static enum_array<file_t, hash_t> s_ep;
     static all_castling_types<hash_t>          s_castling;
     static hash_t                               s_side, s_no_pawns;
     hash_t m_hash{};

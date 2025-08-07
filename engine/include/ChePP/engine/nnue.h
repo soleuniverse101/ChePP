@@ -9,6 +9,7 @@
 #include "movegen.h"
 #include <hwy/highway.h>
 #include <hwy/highway_export.h>
+#include "string.h"
 
 
 template <size_t sz>
@@ -34,10 +35,10 @@ class feature_t
 
     static feature_t make(const square_t sq, const piece_type_t pt, const color_t c)
     {
-        return feature_t(c * 64 + pt * 64 * 2 + sq * 64 * 2 * 6);
+        return feature_t(value_of(c) * 64 + value_of(pt) * 64 * 2 + value_of(sq) * 64 * 2 * 6);
     }
 
-    [[nodiscard]] uint16_t view(const square_t ksq) const { return ksq + m_idx; }
+    [[nodiscard]] uint16_t view(const square_t ksq) const { return value_of(ksq) + m_idx; }
 
     static constexpr size_t n_features = 64 * 64 * 6 * 2;
 
@@ -108,7 +109,7 @@ struct nnue_t
                 m_remove_dirty_features.at(m_remove_features_idx++) = feature_t::make(move.from_sq(), PAWN, c);
                 m_add_dirty_features.at(m_add_features_idx++)      = feature_t::make(move.to_sq(), PAWN, c);
                 m_remove_dirty_features.at(m_remove_features_idx++) =
-                    feature_t::make(static_cast<square_t>(static_cast<int>(move.to_sq()) - down), PAWN, ~c);
+                    feature_t::make(move.to_sq()- down, PAWN, ~c);
                 break;
             }
             case NORMAL:
@@ -120,7 +121,7 @@ struct nnue_t
                 if (const piece_t taken = pos.taken(); taken != NO_PIECE)
                 {
                     m_remove_dirty_features.at(m_remove_features_idx++) =
-                        feature_t::make(move.to_sq(), piece_piece_type(taken), ~c);
+                        feature_t::make(move.to_sq(), taken.type(), ~c);
                 }
                 break;
             }
@@ -131,7 +132,7 @@ struct nnue_t
                 if (const piece_t taken = pos.taken(); taken != NO_PIECE)
                 {
                     m_remove_dirty_features.at(m_remove_features_idx++) =
-                        feature_t::make(move.to_sq(), piece_piece_type(taken), ~c);
+                        feature_t::make(move.to_sq(), taken.type(), ~c);
                 }
                 break;
             }
@@ -139,7 +140,7 @@ struct nnue_t
         }
     }
 
-    void update_accumulator(const position_t& pos) {
+    void update_accumulator(const position_t& pos, const color_t c) {
         using D = hn::ScalableTag<int16_t>;
         constexpr D      d;
         constexpr size_t lanes = hn::Lanes(d);
@@ -148,34 +149,55 @@ struct nnue_t
 
         // Removed features
         for (size_t i = 0; i < m_remove_features_idx; ++i) {
-            for (const auto side : {WHITE, BLACK}) {
-                const auto& f = m_remove_dirty_features[i];
-                const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(side)));
+                const auto f = m_remove_dirty_features[i];
+                const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(c)));
 
                 for (size_t j = 0; j < s_accumulator_size; j += lanes) {
-                    const auto acc = hn::LoadU(d, &accumulator[side][j]);
+                    const auto acc = hn::LoadU(d, &accumulator[c][j]);
                     const auto w   = hn::LoadU(d, &weights[j]);
-                    hn::StoreU(hn::Sub(acc, w), d, &accumulator[side][j]);
+                    hn::StoreU(hn::Sub(acc, w), d, &accumulator[c][j]);
                 }
-            }
         }
 
         // Added features
         for (size_t i = 0; i < m_add_features_idx; ++i) {
-            for (const auto side : {WHITE, BLACK}) {
-                const auto& f = m_add_dirty_features[i];
-                const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(side)));
+                const auto f = m_add_dirty_features[i];
+                const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(c)));
 
                 for (size_t j = 0; j < s_accumulator_size; j += lanes) {
-                    const auto acc = hn::LoadU(d, &accumulator[side][j]);
+                    const auto acc = hn::LoadU(d, &accumulator[c][j]);
                     const auto w   = hn::LoadU(d, &weights[j]);
-                    hn::StoreU(hn::Add(acc, w), d, &accumulator[side][j]);
+                    hn::StoreU(hn::Add(acc, w), d, &accumulator[c][j]);
                 }
             }
-        }
+    }
 
-        m_remove_features_idx = 0;
-        m_add_features_idx = 0;
+    void refresh_accumulator(const position_t& pos, const color_t c)
+    {
+        using D = hn::ScalableTag<int16_t>;
+        constexpr D      d;
+        constexpr size_t lanes = hn::Lanes(d);
+
+        auto& accumulator = m_accumulator_stack[m_accumulator_idx];
+
+        memcpy(&accumulator[c], &m_accumulator_layer.m_biases, sizeof(accumulator));
+
+        for (auto sq = A1; sq < H8; ++sq )
+        {
+            const auto pc = pos.piece_type_at(sq);
+            if (pc == NO_PIECE_TYPE)
+            {
+                continue;
+            }
+            const auto f = feature_t::make(sq, pc, c);
+            const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(c)));
+
+            for (size_t j = 0; j < s_accumulator_size; j += lanes) {
+                const auto acc = hn::LoadU(d, &accumulator[c][j]);
+                const auto w   = hn::LoadU(d, &weights[j]);
+                hn::StoreU(hn::Add(acc, w), d, &accumulator[c][j]);
+            }
+        }
     }
 
 };

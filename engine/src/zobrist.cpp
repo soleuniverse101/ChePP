@@ -4,8 +4,8 @@
 
 using zb = zobrist_t;
 
-all_pieces<all_squares<hash_t>> zb::s_psq{};
-all_files<hash_t>               zb::s_ep{};
+enum_array<piece_t, enum_array<square_t, hash_t>> zb::s_psq{};
+enum_array<file_t, hash_t> zb::s_ep{};
 all_castling_types<hash_t>      zb::s_castling{};
 hash_t                          zb::s_side, zb::s_no_pawns;
 
@@ -39,7 +39,7 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
     {
         // ep square should be set only if it is playable
         // aka if a piece can play en passant
-        m_hash ^= s_ep.at(fl_of(pos.ep_square())); // reset old ep square
+        m_hash ^= s_ep.at(pos.ep_square().file()); // reset old ep square
     }
 
     const square_t    from  = move.from_sq();
@@ -61,8 +61,8 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
         auto [k_from, k_to]                 = castling_rights_t::king_move(castling_type);
         auto [r_from, r_to]                 = castling_rights_t::rook_move(castling_type);
 
-        move_piece(piece(KING, color), k_from, k_to);
-        move_piece(piece(ROOK, color), r_from, r_to);
+        move_piece(piece_t{color, KING}, k_from, k_to);
+        move_piece(piece_t{color, ROOK}, r_from, r_to);
         return; //no capture, no promotion
     }
 
@@ -75,15 +75,15 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
             flip_piece(pos.piece_at(to), to);
         }
         // set new ep square
-        else if (pt == PAWN && (to - from == (2 * up)))
+        else if (pt == PAWN && (value_of(to - from) == value_of(2 * up)))
         {
-            m_hash ^= s_ep.at(fl_of(to));
+            m_hash ^= s_ep.at(to.file());
         }
     }
     if  (move_type == EN_PASSANT)
     {
         // remove ep pawn
-        flip_piece(piece(PAWN, ~color), static_cast<square_t>(static_cast<int>(to) - up));
+        flip_piece(piece_t{~color, PAWN}, to - up);
     }
     if  (move_type == PROMOTION)
     {
@@ -95,7 +95,7 @@ void zobrist_t::play_move(const move_t move, const position_t& pos)
 zb::zobrist_t(const position_t& pos)
 {
     m_hash = 0;
-    for (square_t sq = A1; sq <= H8; sq = static_cast<square_t>(sq + 1))
+    for (auto sq = A1; sq <= H8; sq = ++sq)
     {
         if (pos.piece_at(sq) != NO_PIECE)
         {
@@ -104,7 +104,7 @@ zb::zobrist_t(const position_t& pos)
     }
     if (pos.ep_square() != NO_SQUARE)
     {
-        flip_ep(fl_of(pos.ep_square()));
+        flip_ep(pos.ep_square().file());
     }
     if (pos.color() == BLACK)
     {
