@@ -1,8 +1,6 @@
 #ifndef POSITION_H_INCLUDED
 #define POSITION_H_INCLUDED
 #include "bitboard.h"
-#include "castle.h"
-#include "move.h"
 #include "types.h"
 #include "zobrist.h"
 
@@ -39,7 +37,7 @@ class position_t
         [[nodiscard]] zobrist_t                       hash() const { return m_hash; }
         [[nodiscard]] int                             halfmove_clock() const { return m_halfmove_clock; }
 
-        void crs_remove_rights(const uint8_t lost_mask) { m_crs.remove_right(lost_mask); }
+        void crs_remove_rights(const castling_rights_t lost) { m_crs.remove(lost); }
 
       private:
         square_t                        m_ep_square;
@@ -350,8 +348,11 @@ inline bool position_t::from_fen(const std::string_view fen)
         return false;
     m_color = color.value();
 
-    castling_rights_t& crs = m_states.at(m_state_idx).m_crs;
-    crs                    = castling_rights_t::from_string(castling_str);
+
+    const auto crs                    = from_string<castling_rights_t>(castling_str);
+    if (!crs) return false;
+    m_states.at(m_state_idx).m_crs = crs.value();
+
 
     const auto ep_square = from_string<square_t>(ep_str);
     if (!ep_square)
@@ -495,19 +496,19 @@ inline void position_t::do_move(const move_t move)
 
     const move_type_t move_type = move.type_of();
 
-    const uint8_t lost =
-        (castling_rights_t::lost_by_moving_from(from) | castling_rights_t::lost_by_moving_from(to)) & crs().mask();
-    if (lost)
+    const auto lost = state.m_crs.lost_from_move(move);
+
+    if (lost != CASTLING_NONE)
     {
-        state.m_crs.remove_right(lost);
-        state.m_hash.flip_castling_rights(lost);
+        state.m_crs.remove(lost);
+        state.m_hash.flip_castling_rights(lost.mask());
     }
     if (move_type == CASTLING)
     {
         const auto castling_type = move.castling_type();
-        assert(castling_rights_t{lost}.has_right(castling_type));
-        auto [k_from, k_to] = castling_rights_t::king_move(castling_type);
-        auto [r_from, r_to] = castling_rights_t::rook_move(castling_type);
+        assert(castling_rights_t{lost}.has(castling_type));
+        auto [k_from, k_to] = castling_type.king_move();
+        auto [r_from, r_to] = castling_type.rook_move();
 
         remove_piece(ROOK, us, r_from);
         move_piece(KING, us, k_from, k_to);
@@ -619,8 +620,8 @@ inline void position_t::undo_move(const move_t move)
     if (move_type == CASTLING)
     {
         const auto castling_type = move.castling_type();
-        auto [k_from, k_to]      = castling_rights_t::king_move(castling_type);
-        auto [r_from, r_to]      = castling_rights_t::rook_move(castling_type);
+        auto [k_from, k_to]      = castling_type.king_move();
+        auto [r_from, r_to]      = castling_type.rook_move();
 
         remove_piece(ROOK, us, r_to);
         move_piece(KING, us, k_to, k_from);

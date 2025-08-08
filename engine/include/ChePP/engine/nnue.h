@@ -21,8 +21,8 @@ struct accumulator_t
         return c == WHITE ? m_white : m_black;
     }
 
-    std::array<int16_t, sz> m_white;
-    std::array<int16_t, sz> m_black;
+    alignas(64) std::array<int16_t, sz> m_white;
+    alignas(64) std::array<int16_t, sz> m_black;
 };
 
 // (ksq, piece type, color, square)
@@ -49,8 +49,8 @@ class feature_t
 template <typename T, size_t in_sz, size_t out_sz>
 struct layer_t
 {
-    std::array<std::array<T, out_sz>, in_sz> m_weights;
-    std::array<int16_t, out_sz>              m_biases;
+    alignas(64) std::array<std::array<T, out_sz>, in_sz> m_weights;
+    alignas(64) std::array<int16_t, out_sz>              m_biases;
 };
 
 HWY_BEFORE_NAMESPACE();
@@ -95,8 +95,8 @@ struct nnue_t
         {
             case CASTLING:
             {
-                auto [k_from, k_to]                           = castling_rights_t::king_move(move.castling_type());
-                auto [r_from, r_to]                           = castling_rights_t::rook_move(move.castling_type());
+                auto [k_from, k_to]                           = move.castling_type().king_move();
+                auto [r_from, r_to]                           = move.castling_type().rook_move();
                 m_add_dirty_features.at(m_add_features_idx++) = feature_t::make(r_to, ROOK, c);
                 m_remove_dirty_features.at(m_remove_features_idx++) = feature_t::make(r_from, ROOK, c);
                 m_add_dirty_features.at(m_add_features_idx++)      = feature_t::make(k_to, KING, c);
@@ -141,7 +141,6 @@ struct nnue_t
     }
 
     void update_accumulator(const position_t& pos, const color_t c) {
-        using D = hn::ScalableTag<int16_t>;
         constexpr D      d;
         constexpr size_t lanes = hn::Lanes(d);
 
@@ -165,11 +164,13 @@ struct nnue_t
                 const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(c)));
 
                 for (size_t j = 0; j < s_accumulator_size; j += lanes) {
-                    const auto acc = hn::LoadU(d, &accumulator[c][j]);
-                    const auto w   = hn::LoadU(d, &weights[j]);
-                    hn::StoreU(hn::Add(acc, w), d, &accumulator[c][j]);
+                    const auto acc = hn::Load(d, &accumulator[c][j]);
+                    const auto w   = hn::Load(d, &weights[j]);
+                    hn::Store(hn::Add(acc, w), d, &accumulator[c][j]);
                 }
             }
+        m_add_features_idx = 0;
+        m_remove_features_idx = 0;
     }
 
     void refresh_accumulator(const position_t& pos, const color_t c)
@@ -193,9 +194,9 @@ struct nnue_t
             const auto& weights = m_accumulator_layer.m_weights.at(f.view(pos.ksq(c)));
 
             for (size_t j = 0; j < s_accumulator_size; j += lanes) {
-                const auto acc = hn::LoadU(d, &accumulator[c][j]);
-                const auto w   = hn::LoadU(d, &weights[j]);
-                hn::StoreU(hn::Add(acc, w), d, &accumulator[c][j]);
+                const auto acc = hn::Load(d, &accumulator[c][j]);
+                const auto w   = hn::Load(d, &weights[j]);
+                hn::Store(hn::Add(acc, w), d, &accumulator[c][j]);
             }
         }
     }

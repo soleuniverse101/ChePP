@@ -44,6 +44,7 @@ TEST(ZobristTranspositions, CastlingRightsAffectHash) {
     pos1.do_move(move_t::make<NORMAL>(E7, E8));
     pos1.do_move(move_t::null());
 
+
     EXPECT_EQ(pos1.hash(), pos2.hash());
 }
 

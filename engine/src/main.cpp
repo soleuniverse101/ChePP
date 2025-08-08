@@ -104,10 +104,25 @@ int main() {
     constexpr move_t move = move_t::make<NORMAL>(E2, E4);
     pos.do_move(move);
 
-    net->push_accumulator();
-    net->add_dirty_move<WHITE>(pos, move);
-    net->update_accumulator(pos, WHITE);
-    net->update_accumulator(pos, BLACK);
+
+
+    constexpr int iterations = 1'000'000;
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (int i = 0; i < iterations; ++i) {
+            net->push_accumulator();
+            net->add_dirty_move<WHITE>(pos, move);
+            net->update_accumulator(pos, WHITE);
+            net->update_accumulator(pos, BLACK);
+            net->pop_accumulator();
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto total_ns = duration_cast<std::chrono::nanoseconds>(end - start).count();
+        double avg_ns = static_cast<double>(total_ns) / iterations;
+
+        std::cout << "Average time per iteration: " << avg_ns << " ns\n";
 
     std::cout << "After move E2->E4 and update:\n";
     print_accumulator(net->m_accumulator_stack[net->m_accumulator_idx], WHITE);

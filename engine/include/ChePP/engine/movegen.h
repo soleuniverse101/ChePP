@@ -2,8 +2,8 @@
 #define MOVEGEN_H_INCLUDED
 
 #include "bitboard.h"
-#include "move.h"
 #include "position.h"
+#include "types.h"
 
 enum movegen_type_t
 {
@@ -185,15 +185,16 @@ void gen_castling(const position_t& pos, move_list_t& list)
     using cr = castling_rights_t;
     if (pos.check_mask(c) != bb::empty())
         return;
-    const cr crs = pos.crs();
-    if (crs.mask() == 0)
+    const cr rights = pos.crs();
+    if (rights.mask() == 0)
         return;
     for (const auto side : {KINGSIDE, QUEENSIDE})
     {
-        if (cr::mask(cr::type(c, side)) & crs.mask())
+        const auto type = castling_type_t{c, side};
+        if (rights.has(type))
         {
-            auto [k_from, k_to] = cr::king_move(cr::type(c, side));
-            auto [r_from, r_to] = cr::rook_move(cr::type(c, side));
+            auto [k_from, k_to] = type.king_move();
+            auto [r_from, r_to] = type.rook_move();
             const piece_t our_king{c, KING};
             assert(pos.piece_at(k_from) == our_king);
             bool              safe = ((bb::from_to_excl(k_from, r_from) & pos.occupancy()) == bb::empty());
@@ -209,7 +210,7 @@ void gen_castling(const position_t& pos, move_list_t& list)
             }
             if (safe)
             {
-                list.add(move_t::make<CASTLING>(k_from, k_to, cr::type(c, side)));
+                list.add(move_t::make<CASTLING>(k_from, k_to, type));
             }
         }
     }

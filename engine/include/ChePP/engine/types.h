@@ -1,27 +1,32 @@
 #ifndef TYPES_H_INCLUDED
 #define TYPES_H_INCLUDED
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
 #include <optional>
-#include <algorithm>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
 
-using hash_t     = std::uint64_t;
+using hash_t = std::uint64_t;
 
 template <typename T>
 struct enum_utils;
 
 template <typename T, typename = void>
-struct has_enum_utils : std::false_type {};
+struct has_enum_utils : std::false_type
+{
+};
 
 template <typename T>
-struct has_enum_utils<T, std::void_t<decltype(enum_utils<T>::is_well_ordered)>> : std::true_type {};
+struct has_enum_utils<T, std::void_t<decltype(enum_utils<T>::is_well_ordered)>> : std::true_type
+{
+};
 
 template <typename T>
 inline constexpr bool has_enum_utils_v = has_enum_utils<T>::value;
@@ -48,6 +53,7 @@ DEFINE_HAS_ENUM_UTILS_MEMBER(index)
 DEFINE_HAS_ENUM_UTILS_MEMBER(value_at) // ordinal
 DEFINE_HAS_ENUM_UTILS_MEMBER(value_of) // actual value
 DEFINE_HAS_ENUM_UTILS_MEMBER(repr)
+DEFINE_HAS_ENUM_UTILS_MEMBER(values)
 
 template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
 constexpr bool is_well_ordered = enum_utils<enum_type>::is_well_ordered;
@@ -55,8 +61,27 @@ constexpr bool is_well_ordered = enum_utils<enum_type>::is_well_ordered;
 template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
 constexpr enum_utils<enum_type>::idx_type count = enum_utils<enum_type>::count;
 
+template <typename Enum, std::size_t... Is>
+constexpr std::array<Enum, sizeof...(Is)> generate_enum_values(std::index_sequence<Is...>)
+{
+    return {Enum(Is)...};
+}
+
+template <typename Enum, std::enable_if_t<has_enum_utils_v<Enum>, int> = 0>
+constexpr std::array<Enum, count<Enum>> make_values()
+{
+    if constexpr (!has_values_v<Enum> && is_well_ordered<Enum>)
+    {
+        return generate_enum_values<Enum>(std::make_index_sequence<count<Enum>>{});
+    }
+    else
+    {
+        return enum_utils<Enum>::values;
+    }
+}
+
 template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
-constexpr std::array<enum_type, enum_utils<enum_type>::count> values = enum_utils<enum_type>::values;
+constexpr std::array<enum_type, enum_utils<enum_type>::count> values = make_values<enum_type>();
 
 template <typename enum_type, std::enable_if_t<has_enum_utils_v<enum_type>, int> = 0>
 using repr_type = std::array<std::string_view, enum_utils<enum_type>::count>;
@@ -67,7 +92,7 @@ constexpr repr_type<enum_type> repr = enum_utils<enum_type>::repr;
 template <typename enum_type>
 [[nodiscard]] constexpr enum_type value_at(const typename enum_utils<enum_type>::idx_type idx)
 {
-    return  values<enum_type>.at(idx);
+    return values<enum_type>.at(idx);
 }
 
 template <typename enum_type>
@@ -129,7 +154,6 @@ template <typename enum_type>
     return from_string<enum_type>(std::string_view{&value, 1});
 }
 
-
 template <typename enum_type, std::enable_if_t<has_to_string_v<enum_type> || has_repr_v<enum_type>, int> = 0>
 std::ostream& operator<<(std::ostream& os, const enum_type value)
 {
@@ -138,121 +162,140 @@ std::ostream& operator<<(std::ostream& os, const enum_type value)
 
 // Unary minus
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr enum_type operator-(const enum_type rhs) {
+constexpr enum_type operator-(const enum_type rhs)
+{
     return enum_type{-value_of(rhs)};
 }
 
 // Pre-increment
 template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
-constexpr enum_type& operator++(enum_type& rhs) {
+constexpr enum_type& operator++(enum_type& rhs)
+{
     rhs = enum_type{value_of(rhs) + 1};
     return rhs;
 }
 
 template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
-constexpr enum_type& operator--(enum_type& rhs) {
+constexpr enum_type& operator--(enum_type& rhs)
+{
     rhs = enum_type{value_of(rhs) - 1};
     return rhs;
 }
 
 // Post-increment
 template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
-constexpr enum_type operator++(enum_type& rhs, int) {
+constexpr enum_type operator++(enum_type& rhs, int)
+{
     enum_type tmp = rhs;
-    rhs = enum_type{value_of(rhs) + 1};
+    rhs           = enum_type{value_of(rhs) + 1};
     return tmp;
 }
 
 template <typename enum_type, std::enable_if_t<is_well_ordered<enum_type>, int> = 0>
-constexpr enum_type operator--(enum_type& rhs, int) {
+constexpr enum_type operator--(enum_type& rhs, int)
+{
     enum_type tmp = rhs;
-    rhs = enum_type{value_of(rhs) - 1};
+    rhs           = enum_type{value_of(rhs) - 1};
     return tmp;
 }
 
 // Enum + Enum
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr enum_type operator+(const enum_type lhs, const enum_type rhs) {
+constexpr enum_type operator+(const enum_type lhs, const enum_type rhs)
+{
     return enum_type{value_of(lhs) + value_of(rhs)};
 }
 
 // Enum + int
 template <typename enum_type, typename int_type,
           std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
-constexpr enum_type operator+(const enum_type lhs, const int_type rhs) {
+constexpr enum_type operator+(const enum_type lhs, const int_type rhs)
+{
     return enum_type{value_of(lhs) + rhs};
 }
 
 // int + Enum
 template <typename int_type, typename enum_type,
           std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
-constexpr enum_type operator+(const int_type lhs, const enum_type rhs) {
+constexpr enum_type operator+(const int_type lhs, const enum_type rhs)
+{
     return rhs + lhs;
 }
 
 // Enum - Enum
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr enum_type operator-(const enum_type lhs, const enum_type rhs) {
+constexpr enum_type operator-(const enum_type lhs, const enum_type rhs)
+{
     return enum_type{value_of(lhs) - value_of(rhs)};
 }
 
 // Enum - int
 template <typename enum_type, typename int_type,
           std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
-constexpr enum_type operator-(const enum_type lhs, const int_type rhs) {
+constexpr enum_type operator-(const enum_type lhs, const int_type rhs)
+{
     return enum_type{value_of(lhs) - rhs};
 }
 
 // int - Enum
 template <typename int_type, typename enum_type,
           std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
-constexpr enum_type operator-(const int_type lhs, const enum_type rhs) {
+constexpr enum_type operator-(const int_type lhs, const enum_type rhs)
+{
     return enum_type{lhs - value_of(rhs)};
 }
 
 // Enum * int
 template <typename enum_type, typename int_type,
           std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
-constexpr enum_type operator*(const enum_type lhs, const int_type rhs) {
+constexpr enum_type operator*(const enum_type lhs, const int_type rhs)
+{
     return enum_type{value_of(lhs) * rhs};
 }
 
 // int * Enum
 template <typename int_type, typename enum_type,
           std::enable_if_t<has_value_of_v<enum_type> && std::is_signed_v<int_type>, int> = 0>
-constexpr enum_type operator*(const int_type lhs, const enum_type rhs) {
+constexpr enum_type operator*(const int_type lhs, const enum_type rhs)
+{
     return rhs * lhs;
 }
 
 // Equality
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr bool operator==(const enum_type lhs, const enum_type rhs) {
+constexpr bool operator==(const enum_type lhs, const enum_type rhs)
+{
     return value_of(lhs) == value_of(rhs);
 }
 
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr bool operator!=(const enum_type lhs, const enum_type rhs) {
+constexpr bool operator!=(const enum_type lhs, const enum_type rhs)
+{
     return value_of(lhs) != value_of(rhs);
 }
 
 // Comparisons
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr bool operator<(const enum_type lhs, const enum_type rhs) {
+constexpr bool operator<(const enum_type lhs, const enum_type rhs)
+{
     return value_of(lhs) < value_of(rhs);
 }
 
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr bool operator<=(const enum_type lhs, const enum_type rhs) {
+constexpr bool operator<=(const enum_type lhs, const enum_type rhs)
+{
     return value_of(lhs) <= value_of(rhs);
 }
 
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr bool operator>(const enum_type lhs, const enum_type rhs) {
+constexpr bool operator>(const enum_type lhs, const enum_type rhs)
+{
     return value_of(lhs) > value_of(rhs);
 }
 
 template <typename enum_type, std::enable_if_t<has_value_of_v<enum_type>, int> = 0>
-constexpr bool operator>=(const enum_type lhs, const enum_type rhs) {
+constexpr bool operator>=(const enum_type lhs, const enum_type rhs)
+{
     return value_of(lhs) >= value_of(rhs);
 }
 
@@ -267,17 +310,11 @@ struct enum_array
 
     constexpr value_type& operator[](enum_type e) noexcept { return m_data[enum_utils<enum_type>::index(e)]; }
 
-    constexpr const value_type& operator[](enum_type e) const noexcept
-    {
-        return m_data.at(index<enum_type>(e));
-    }
+    constexpr const value_type& operator[](enum_type e) const noexcept { return m_data.at(index<enum_type>(e)); }
 
     constexpr value_type& at(enum_type e) { return m_data.at(index(e)); }
 
-    [[nodiscard]] constexpr const value_type& at(enum_type e) const
-    {
-        return m_data.at(index<enum_type>(e));
-    }
+    [[nodiscard]] constexpr const value_type& at(enum_type e) const { return m_data.at(index<enum_type>(e)); }
 
     [[nodiscard]] static constexpr size_t size() noexcept { return count; }
 
@@ -314,8 +351,7 @@ struct file_t
     using value_type = int8_t;
 
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit file_t(int_type val)
-        : m_val(static_cast<value_type>(val))
+    constexpr explicit file_t(int_type val) : m_val(static_cast<value_type>(val))
     {
         assert(val >= 0 && val <= 8);
     }
@@ -333,7 +369,6 @@ constexpr file_t FILE_F{5};
 constexpr file_t FILE_G{6};
 constexpr file_t FILE_H{7};
 constexpr file_t NO_FILE{8};
-
 
 template <>
 struct enum_utils<file_t>
@@ -354,7 +389,8 @@ struct enum_utils<file_t>
 
     static constexpr std::optional<enum_type> from_string(const std::string_view& value)
     {
-        if (value.length() != 1) return std::nullopt;
+        if (value.length() != 1)
+            return std::nullopt;
         const char c = value[0];
         if (c < 'a' || c > 'h')
             return std::nullopt;
@@ -367,8 +403,7 @@ struct rank_t
     using value_type = int8_t;
 
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit rank_t(int_type val)
-        : m_val(static_cast<value_type>(val))
+    constexpr explicit rank_t(int_type val) : m_val(static_cast<value_type>(val))
     {
         assert(val >= 0 && val <= 8);
     }
@@ -386,9 +421,6 @@ constexpr rank_t RANK_6{5};
 constexpr rank_t RANK_7{6};
 constexpr rank_t RANK_8{7};
 constexpr rank_t NO_RANK{8};
-
-
-
 
 template <>
 struct enum_utils<rank_t>
@@ -409,7 +441,8 @@ struct enum_utils<rank_t>
 
     static constexpr std::optional<enum_type> from_string(const std::string_view& value)
     {
-        if (value.length() != 1) return std::nullopt;
+        if (value.length() != 1)
+            return std::nullopt;
         const char c = value[0];
         if (c < '1' || c > '8')
             return std::nullopt;
@@ -428,22 +461,19 @@ struct square_t
     using value_type = int8_t;
 
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit square_t(int_type val)
-        : m_val(static_cast<value_type>(val))
+    constexpr explicit square_t(int_type val) : m_val(static_cast<value_type>(val))
     {
         assert(val >= 0 && val <= 64);
     }
 
     constexpr explicit square_t(const coordinates_t& coordinates)
         : m_val(static_cast<value_type>(index(coordinates.first) +
-                                    index(coordinates.second) * count<decltype(coordinates.second)>))
+                                        index(coordinates.second) * count<decltype(coordinates.second)>))
     {
         assert(m_val >= 0 && m_val <= 63);
     }
 
-    constexpr explicit square_t(const file_t file, const rank_t rank) : square_t({file, rank})
-    {
-    }
+    constexpr explicit square_t(const file_t file, const rank_t rank) : square_t({file, rank}) {}
 
     [[nodiscard]] constexpr file_t file() const noexcept { return file_t{m_val & 7}; }
 
@@ -451,10 +481,7 @@ struct square_t
 
     [[nodiscard]] constexpr coordinates_t coordinates() const noexcept { return {file(), rank()}; }
 
-    [[nodiscard]] constexpr square_t flipped_horizontally() const noexcept
-    {
-        return square_t{file(), RANK_8 - rank()};
-    }
+    [[nodiscard]] constexpr square_t flipped_horizontally() const noexcept { return square_t{file(), RANK_8 - rank()}; }
 
     value_type m_val;
     friend enum_utils<square_t>;
@@ -532,7 +559,6 @@ constexpr square_t H6{{FILE_H, RANK_6}};
 constexpr square_t H7{{FILE_H, RANK_7}};
 constexpr square_t H8{{FILE_H, RANK_8}};
 
-
 constexpr square_t NO_SQUARE{64};
 
 template <>
@@ -546,10 +572,6 @@ struct enum_utils<square_t>
     static constexpr idx_type count           = 65;
 
     //clang-format off
-    static constexpr std::array values = {A1, B1, C1, D1, E1, F1, G1, H1, A2, B2, C2, D2, E2, F2,       G2, H2, A3,
-                                          B3, C3, D3, E3, F3, G3, H3, A4, B4, C4, D4, E4, F4, G4,       H4, A5, B5,
-                                          C5, D5, E5, F5, G5, H5, A6, B6, C6, D6, E6, F6, G6, H6,       A7, B7, C7,
-                                          D7, E7, F7, G7, H7, A8, B8, C8, D8, E8, F8, G8, H8, NO_SQUARE};
     static constexpr repr_type<enum_type> repr = {
         "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1", "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2", "a3",
         "b3", "c3", "d3", "e3", "f3", "g3", "h3", "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4", "a5", "b5",
@@ -579,7 +601,6 @@ struct enum_utils<square_t>
     }
 };
 
-
 struct piece_type_t
 {
     using value_type = int8_t;
@@ -587,8 +608,7 @@ struct piece_type_t
     constexpr piece_type_t() : m_val(0) {};
 
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit piece_type_t(int_type val)
-        : m_val(static_cast<value_type>(val))
+    constexpr explicit piece_type_t(int_type val) : m_val(static_cast<value_type>(val))
     {
         assert(val >= 0 && val <= 7);
     }
@@ -608,8 +628,6 @@ constexpr piece_type_t QUEEN{4};
 constexpr piece_type_t KING{5};
 constexpr piece_type_t NO_PIECE_TYPE{6};
 
-
-
 template <>
 struct enum_utils<piece_type_t>
 {
@@ -620,15 +638,17 @@ struct enum_utils<piece_type_t>
     static constexpr bool     is_well_ordered = true;
     static constexpr idx_type count           = 7;
 
-    static constexpr std::array<enum_type, count> values = {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, NO_PIECE_TYPE};
-    static constexpr repr_type<enum_type>         repr   = {"p", "n", "b", "r", "q", "k", "-"};
+    static constexpr repr_type<enum_type> repr = {"p", "n", "b", "r", "q", "k", "-"};
 
     static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
 };
 
 inline enum_array<piece_type_t, int> piece_type_value{100, 300, 325, 500, 900, 1000};
 
-[[nodiscard]] constexpr piece_type_t::piece_value_type piece_type_t::value() const { return piece_type_value.at(*this); }
+[[nodiscard]] constexpr piece_type_t::piece_value_type piece_type_t::value() const
+{
+    return piece_type_value.at(*this);
+}
 
 struct color_t
 {
@@ -636,16 +656,12 @@ struct color_t
 
     constexpr color_t() : m_val(0) {};
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit color_t(int_type val)
-        : m_val(static_cast<value_type>(val))
+    constexpr explicit color_t(int_type val) : m_val(static_cast<value_type>(val))
     {
         assert(val == 0 || val == 1);
     }
 
-    constexpr color_t operator!() const
-    {
-        return color_t(static_cast<value_type>(m_val ^ 1));
-    }
+    constexpr color_t operator!() const { return color_t(static_cast<value_type>(m_val ^ 1)); }
     constexpr color_t operator~() const { return !(*this); }
 
     value_type m_val;
@@ -665,8 +681,7 @@ struct enum_utils<color_t>
     static constexpr bool     is_well_ordered = true;
     static constexpr idx_type count           = 2;
 
-    static constexpr std::array           values = {WHITE, BLACK};
-    static constexpr repr_type<enum_type> repr   = {"w", "b"};
+    static constexpr repr_type<enum_type> repr = {"w", "b"};
 
     static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
 
@@ -686,16 +701,11 @@ struct piece_t
 
     constexpr piece_t() : m_val(12) {}
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit piece_t(int_type val)
-        : m_val(static_cast<value_type>(val))
+    constexpr explicit piece_t(int_type val) : m_val(static_cast<value_type>(val))
     {
         assert(val >= 0 && val <= 12);
     }
-    explicit constexpr piece_t(const color_t c, const piece_type_t pt)
-        : piece_t(index(c) + (index(pt) << 1))
-    {
-    }
-
+    explicit constexpr piece_t(const color_t c, const piece_type_t pt) : piece_t(index(c) + (index(pt) << 1)) {}
 
     [[nodiscard]] constexpr piece_type_t type() const { return value_at<piece_type_t>(m_val >> 1); }
 
@@ -726,22 +736,16 @@ constexpr piece_t NO_PIECE{12};
 template <>
 struct enum_utils<piece_t>
 {
-    using enum_type = piece_t;
-    using idx_type  = uint8_t;
+    using enum_type       = piece_t;
+    using idx_type        = uint8_t;
     using underlying_type = enum_type::value_type;
 
     static constexpr bool     is_well_ordered = true;
     static constexpr idx_type count           = 13;
 
-    static constexpr std::array<enum_type, count> values = {W_PAWN,  B_PAWN, W_KNIGHT, B_KNIGHT, W_BISHOP,
-                                                            B_BISHOP,  W_ROOK,   B_ROOK, W_QUEEN, B_QUEEN,
-                                                            W_KING, B_KING,   NO_PIECE};
-    static constexpr repr_type<piece_t> repr   = {"P", "p", "N", "n","B", "b","R", "r","Q", "q","K", "k", "-"};
+    static constexpr repr_type<piece_t> repr = {"P", "p", "N", "n", "B", "b", "R", "r", "Q", "q", "K", "k", "-"};
 
-    static constexpr underlying_type value_of(const enum_type val)
-    {
-        return val.m_val;
-    }
+    static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
 };
 
 struct direction_t
@@ -749,13 +753,10 @@ struct direction_t
     using value_type = int8_t;
 
     template <typename int_type, std::enable_if_t<std::is_integral_v<int_type> && std::is_signed_v<int_type>, int> = 0>
-    constexpr explicit direction_t(int_type val)
-        : m_offset(static_cast<value_type>(val))
+    constexpr explicit direction_t(int_type val) : m_offset(static_cast<value_type>(val))
     {
         assert(val >= -64 && val <= 64);
     }
-
-
 
     value_type m_offset;
 };
@@ -773,23 +774,19 @@ constexpr direction_t NO_DIRECTION{0};
 template <>
 struct enum_utils<direction_t>
 {
-    using enum_type = direction_t;
-    using idx_type  = uint8_t;
+    using enum_type       = direction_t;
+    using idx_type        = uint8_t;
     using underlying_type = enum_type::value_type;
 
     static constexpr bool     is_well_ordered = false;
     static constexpr idx_type count           = 9;
 
     //clang-format off
-    static constexpr std::array<enum_type, count> values = {NORTH, NORTH_EAST, EAST, SOUTH_EAST,
-                                                            SOUTH, SOUTH_WEST, WEST, NORTH_WEST,
-                                                            NO_DIRECTION};
+    static constexpr std::array<enum_type, count> values = {NORTH,      NORTH_EAST, EAST,       SOUTH_EAST,  SOUTH,
+                                                            SOUTH_WEST, WEST,       NORTH_WEST, NO_DIRECTION};
     //clang-format on
 
-    static constexpr underlying_type value_of(const enum_type val)
-    {
-        return val.m_offset;
-    }
+    static constexpr underlying_type value_of(const enum_type val) { return val.m_offset; }
 
     static constexpr idx_type index(const enum_type dir)
     {
@@ -831,7 +828,6 @@ constexpr square_t operator-(const square_t s, const direction_t d)
     return square_t{s - value_of(d)};
 }
 
-
 template <direction_t d>
 constexpr direction_t inverse_dir = -d;
 
@@ -846,7 +842,6 @@ constexpr file_t relative_file = f;
 
 template <color_t c, square_t sq>
 constexpr auto relative_square = square_t{relative_file<c, sq.file()>, relative_rank<c, sq.rank()>};
-
 
 constexpr direction_t direction_from(const square_t a, const square_t b)
 {
@@ -872,6 +867,252 @@ constexpr direction_t direction_from(const square_t a, const square_t b)
 
     return NO_DIRECTION;
 }
+
+enum castling_side_t : uint8_t
+{
+    KINGSIDE  = 0,
+    QUEENSIDE = 1,
+};
+
+struct castling_type_t
+{
+    using value_type = uint8_t;
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit castling_type_t(int_type val) : m_val(static_cast<value_type>(val))
+    {
+        assert(val >= 0 && val <= 4);
+    }
+
+    constexpr explicit castling_type_t(const color_t c, const castling_side_t side)
+        : castling_type_t((value_of(c) << 1) + side)
+    {
+    }
+
+    [[nodiscard]] constexpr value_type mask() const { return 1 << m_val; }
+
+    [[nodiscard]] constexpr std::pair<square_t, square_t> king_move() const;
+    [[nodiscard]] constexpr std::pair<square_t, square_t> rook_move() const;
+
+    value_type m_val;
+    friend enum_utils<castling_side_t>;
+};
+
+constexpr castling_type_t WHITE_KINGSIDE{WHITE, KINGSIDE};
+constexpr castling_type_t BLACK_KINGSIDE{BLACK, KINGSIDE};
+constexpr castling_type_t WHITE_QUEENSIDE{WHITE, QUEENSIDE};
+constexpr castling_type_t BLACK_QUEENSIDE{BLACK, QUEENSIDE};
+constexpr castling_type_t NO_CASTLING_TYPE{4};
+
+template <>
+struct enum_utils<castling_type_t>
+{
+    using enum_type       = castling_type_t;
+    using idx_type        = uint8_t;
+    using underlying_type = enum_type::value_type;
+
+    static constexpr bool     is_well_ordered = true;
+    static constexpr idx_type count           = 5;
+
+    static constexpr repr_type<enum_type> repr = {"K", "Q", "k", "q", "-"};
+
+    static constexpr underlying_type value_of(const enum_type val) { return val.m_val; }
+};
+
+constexpr enum_array<castling_type_t, std::pair<square_t, square_t>> king_moves{
+    std::pair{E1, G1}, {E1, C1}, {E8, G8}, {E8, C8}, {NO_SQUARE, NO_SQUARE}};
+
+constexpr std::pair<square_t, square_t> castling_type_t::king_move() const
+{
+    return king_moves.at(*this);
+}
+
+constexpr enum_array<castling_type_t, std::pair<square_t, square_t>> rook_moves{
+    std::pair{H1, F1}, {A1, D1}, {H8, F8}, {A8, D8}, {NO_SQUARE, NO_SQUARE}};
+constexpr std::pair<square_t, square_t> castling_type_t::rook_move() const
+{
+    return rook_moves.at(*this);
+}
+
+enum move_type_t : uint16_t
+{
+    NORMAL     = 0,
+    PROMOTION  = 1 << 14,
+    EN_PASSANT = 2 << 14,
+    CASTLING   = 3 << 14
+};
+
+// a move is encoded as an 16 bit unsigned int
+// 0-5 bit : to square (square 0 to 63)
+// 6-11 bit : from square (square 0 to 63)
+// 12-13 bit : promotion piece type (shifted by KNIGHT which is the lowest promotion to fit) or
+// castle type 14-15: promotion (1), en passant (2), castling (3)
+class move_t
+{
+  public:
+    move_t() : m_data(0) {}
+    constexpr explicit move_t(const std::uint16_t d) : m_data(d) {}
+
+    constexpr move_t(const square_t from, const square_t to) : m_data((index(from) << 6) + index(to)) {}
+
+    // to build a move if you already know the type of move
+    template <move_type_t T>
+    static constexpr move_t make(const square_t from, const square_t to, const piece_type_t pt = KNIGHT)
+    {
+        assert(T != CASTLING);
+        return move_t{static_cast<uint16_t>(T + (index(pt - KNIGHT) << 12) + (index(from) << 6) + index(to))};
+    }
+
+    template <move_type_t T>
+    static constexpr move_t make(const square_t from, const square_t to, const castling_type_t c)
+    {
+        assert(T == CASTLING);
+        return move_t(static_cast<uint16_t>(T + (index(c) << 12) + (index(from) << 6) + index(to)));
+    }
+
+    // for sanity check
+    [[nodiscard]] constexpr bool is_ok() const { return none().m_data != m_data && null().m_data != m_data; }
+
+    // for these two moves from and to are the same
+    static constexpr move_t null() { return move_t(65); }
+    static constexpr move_t none() { return move_t(0); }
+
+    constexpr bool operator==(const move_t& m) const { return m_data == m.m_data; }
+    constexpr bool operator!=(const move_t& m) const { return m_data != m.m_data; }
+
+    constexpr explicit operator bool() const { return m_data != 0; }
+
+    [[nodiscard]] constexpr std::uint16_t raw() const { return m_data; }
+
+    [[nodiscard]] constexpr square_t from_sq() const
+    {
+        assert(is_ok());
+        return square_t{(m_data >> 6) & 0x3F};
+    }
+
+    [[nodiscard]] constexpr square_t to_sq() const
+    {
+        assert(is_ok());
+        return square_t{m_data & 0x3F};
+    }
+
+    [[nodiscard]] constexpr move_type_t type_of() const { return static_cast<move_type_t>(m_data & 0b11 << 14); }
+
+    [[nodiscard]] constexpr piece_type_t promotion_type() const { return piece_type_t{(m_data >> 12 & 0b11) + KNIGHT}; }
+
+    [[nodiscard]] constexpr castling_type_t castling_type() const
+    {
+        return static_cast<castling_type_t>(m_data >> 12 & 0b11);
+    }
+
+    [[nodiscard]] std::string to_string() const
+    {
+        std::ostringstream ss;
+        ss << from_sq() << to_sq();
+        if (type_of() == PROMOTION)
+        {
+            ss << promotion_type();
+        }
+        return ss.str();
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const move_t mv) { return os << mv.to_string(); }
+
+  private:
+    std::uint16_t m_data;
+};
+
+struct castling_rights_t
+{
+    using mask_type = uint8_t;
+
+    constexpr castling_rights_t() = default;
+    constexpr explicit castling_rights_t(mask_type m) : m_mask(m) {}
+
+    constexpr castling_rights_t(const std::initializer_list<castling_type_t> types)
+    {
+        for (auto t : types)
+            m_mask |= t.mask();
+    }
+
+    [[nodiscard]] constexpr bool has(const castling_type_t t) const { return m_mask & t.mask(); }
+
+    constexpr void add(const castling_type_t t) { m_mask |= t.mask(); }
+
+    constexpr void remove(const castling_type_t t) { m_mask &= ~t.mask(); }
+
+    constexpr void remove(const castling_rights_t other) { m_mask &= ~other.mask(); }
+
+    constexpr void keep(const castling_rights_t other) { m_mask &= other.mask(); }
+
+    [[nodiscard]] constexpr bool empty() const { return m_mask == 0; }
+
+    [[nodiscard]] constexpr mask_type mask() const { return m_mask; }
+
+    [[nodiscard]] constexpr castling_rights_t lost_from_move(const move_t move) const
+    {
+        castling_rights_t cur{*this};
+        for (const auto square : {move.from_sq(), move.to_sq()})
+            switch (index(square))
+            {
+                case index(E1):
+                        cur.keep(castling_rights_t{WHITE_KINGSIDE, WHITE_QUEENSIDE}); return cur;
+                case index(H1):
+                        cur.keep(castling_rights_t{WHITE_KINGSIDE}); return cur;;
+                case index(A1):
+                        cur.keep(castling_rights_t{WHITE_QUEENSIDE}); return cur;;
+                case index(E8):
+                        cur.keep(castling_rights_t{BLACK_KINGSIDE, BLACK_QUEENSIDE}); return cur;
+                case index(H8):
+                        cur.keep( castling_rights_t{BLACK_KINGSIDE}); return cur;
+                case index(A8):
+                        cur.keep( castling_rights_t{BLACK_QUEENSIDE}); return cur;
+                default: break;
+            }
+        return castling_rights_t{};
+    }
+
+    mask_type m_mask = 0;
+};
+
+constexpr castling_rights_t CASTLING_NONE{0};
+constexpr castling_rights_t CASTLING_K{WHITE_KINGSIDE};
+constexpr castling_rights_t CASTLING_Q{WHITE_QUEENSIDE};
+constexpr castling_rights_t CASTLING_k{BLACK_KINGSIDE};
+constexpr castling_rights_t CASTLING_q{BLACK_QUEENSIDE};
+
+constexpr castling_rights_t CASTLING_KQ{WHITE_KINGSIDE, WHITE_QUEENSIDE};
+constexpr castling_rights_t CASTLING_Kk{WHITE_KINGSIDE, BLACK_KINGSIDE};
+constexpr castling_rights_t CASTLING_Kq{WHITE_KINGSIDE, BLACK_QUEENSIDE};
+constexpr castling_rights_t CASTLING_Qk{WHITE_QUEENSIDE, BLACK_KINGSIDE};
+constexpr castling_rights_t CASTLING_Qq{WHITE_QUEENSIDE, BLACK_QUEENSIDE};
+constexpr castling_rights_t CASTLING_kq{BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+constexpr castling_rights_t CASTLING_KQk{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE};
+constexpr castling_rights_t CASTLING_KQq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_QUEENSIDE};
+constexpr castling_rights_t CASTLING_Kkq{WHITE_KINGSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+constexpr castling_rights_t CASTLING_Qkq{WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+constexpr castling_rights_t CASTLING_KQkq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+template <>
+struct enum_utils<castling_rights_t>
+{
+    using enum_type       = castling_rights_t;
+    using idx_type        = uint8_t;
+    using underlying_type = castling_rights_t::mask_type;
+
+    static constexpr idx_type count           = 16;
+    static constexpr bool     is_well_ordered = true;
+
+    static constexpr repr_type<enum_type> repr =  {
+        "-", "K", "Q", "KQ", "k", "Kk", "Qk", "KQk",
+        "q", "Kq", "Qq", "KQq","kq", "Kkq", "Qkq", "KQkq"
+    };
+
+    static constexpr underlying_type value_of(const castling_rights_t cr) { return cr.m_mask; }
+};
+
 
 namespace bit
 {
@@ -902,17 +1143,19 @@ namespace bit
     }
 
     template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
-    constexpr T shift_left(const T value, const unsigned shift) {
-        //assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
+    constexpr T shift_left(const T value, const unsigned shift)
+    {
+        // assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
         return value << shift;
     }
 
     template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
-    constexpr T shift_right(const T value, const unsigned shift) {
-        //assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
+    constexpr T shift_right(const T value, const unsigned shift)
+    {
+        // assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
         return value >> shift;
     }
-}
+} // namespace bit
 
 constexpr size_t MAX_PLY = 255;
 

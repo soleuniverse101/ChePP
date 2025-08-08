@@ -1,8 +1,6 @@
 #ifndef ZOBRIST_H
 #define ZOBRIST_H
 
-#include "castle.h"
-#include "move.h"
 #include "prng.h"
 #include "types.h"
 
@@ -27,8 +25,6 @@ public:
 
     [[nodiscard]] hash_t value() const { return m_hash; }
 
-    void play_move(move_t move, const position_t& pos);
-
 
     void flip_piece(const piece_t pt, const square_t sq)
     {
@@ -52,9 +48,9 @@ public:
             m_hash ^= s_castling.at(idx);
         }
         **/
-        for (const auto t : castling_types)
+        for (auto type = WHITE_KINGSIDE; type <= BLACK_QUEENSIDE; ++type)
         {
-            if (mask & castling_rights_t::mask(t)) m_hash ^= s_castling.at(t);
+            if (mask & type.mask()) m_hash ^= s_castling.at(type);
         }
 
     }
@@ -71,7 +67,7 @@ public:
 
     static enum_array<piece_t, enum_array<square_t, hash_t>> s_psq;
     static enum_array<file_t, hash_t> s_ep;
-    static all_castling_types<hash_t>          s_castling;
+    static enum_array<castling_type_t, hash_t>          s_castling;
     static hash_t                               s_side, s_no_pawns;
     hash_t m_hash{};
 };
