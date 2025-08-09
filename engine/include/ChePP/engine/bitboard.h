@@ -12,19 +12,24 @@ class bitboard_t
     using bitboard_type = uint64_t;
 
     static void        init();
-    [[nodiscard]] std::string to_string() const;
 
-    bitboard_t() = default;
-    explicit constexpr bitboard_t(const bitboard_type value) : m_data(value) {}
-
-    [[nodiscard]] constexpr bitboard_type value() const { return m_data; }
-    explicit constexpr                    operator bitboard_type() const { return m_data; }
-
+    constexpr bitboard_t() noexcept = default;
+    explicit constexpr bitboard_t(const bitboard_type value) noexcept : m_data(value) {}
+    constexpr bitboard_t(const bitboard_t& other) noexcept = default;
+    constexpr bitboard_t(bitboard_t&& other) noexcept = default;
+    constexpr bitboard_t& operator=(const bitboard_t& other) noexcept = default;
+    constexpr bitboard_t& operator=(bitboard_t&& other) noexcept = default;
     constexpr bitboard_t& operator=(const bitboard_type value)
     {
         m_data = value;
         return *this;
     }
+
+    explicit constexpr                    operator bitboard_type() const { return m_data; }
+    [[nodiscard]] constexpr bitboard_type value() const { return m_data; }
+
+
+    [[nodiscard]] std::string to_string() const;
 
     constexpr bitboard_t operator~() const { return bitboard_t(~m_data); }
     constexpr bitboard_t operator|(const bitboard_t other) const { return bitboard_t(m_data | other.m_data); }

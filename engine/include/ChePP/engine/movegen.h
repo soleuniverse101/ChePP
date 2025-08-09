@@ -165,13 +165,13 @@ template <piece_type_t pc, color_t c>
 void gen_pc_moves(const position_t& pos, move_list_t& list)
 {
 
-    const bitboard_t check_mask = pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c);
-    bitboard_t       bb         = pos.pieces_occupancy(c, pc);
+    const bitboard_t check_mask{pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c)};
+    bitboard_t       bb{pos.pieces_occupancy(c, pc)};
 
     while (bb)
     {
         const square_t from{bb.pops_lsb()};
-        bitboard_t     attacks = bb::attacks<pc>(from, pos.occupancy()) & ~pos.color_occupancy(c) & check_mask;
+        bitboard_t     attacks{bb::attacks<pc>(from, pos.occupancy()) & ~pos.color_occupancy(c) & check_mask};
         while (attacks)
         {
             list.add(move_t::make<NORMAL>(from, square_t{attacks.pops_lsb()}));

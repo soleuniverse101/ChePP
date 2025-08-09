@@ -6,6 +6,7 @@
 #include <bit>
 #include <cassert>
 #include <cstdint>
+#include <expected>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -1155,6 +1156,7 @@ namespace bit
         // assert(shift < sizeof(T) * 8 && "shift exceeds bit width");
         return value >> shift;
     }
+
 } // namespace bit
 
 constexpr size_t MAX_PLY = 255;
