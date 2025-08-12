@@ -40,6 +40,7 @@ void perft_divide(position_t& pos, int depth) {
     std::cout << "Total: " << total << '\n';
 }
 
+/**
 void init_random_weights(layer_t<int16_t, feature_t::n_features, nnue_t::s_accumulator_size>& layer, int16_t seed = 1) {
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int16_t> dist(1, 3);
@@ -63,103 +64,101 @@ void print_accumulator(accumulator_t<nnue_t::s_accumulator_size>& acc, color_t c
     }
     std::cout << "\n";
 }
+**/
+
+inline int king_square_index(square_t relative_king_square) {
+
+    // clang-format off
+    constexpr enum_array<square_t, int> indices{
+        0,  1,  2,  3,  3,  2,  1,  0,
+        4,  5,  6,  7,  7,  6,  5,  4,
+        8,  9,  10, 11, 11, 10, 9,  8,
+        8,  9,  10, 11, 11, 10, 9,  8,
+        12, 12, 13, 13, 13, 13, 12, 12,
+        12, 12, 13, 13, 13, 13, 12, 12,
+        14, 14, 15, 15, 15, 15, 14, 14,
+        14, 14, 15, 15, 15, 15, 14, 14,
+    };
+    // clang-format on
+
+    return indices[relative_king_square];
+}
+
+inline int index(const piece_t piece, const square_t piece_square, const square_t king_square, const color_t view)
+
+{
+    constexpr int          PIECE_TYPE_FACTOR  = 64;
+    constexpr int          PIECE_COLOR_FACTOR = PIECE_TYPE_FACTOR * 6;
+    constexpr int          KING_SQUARE_FACTOR = PIECE_COLOR_FACTOR * 2;
+
+    square_t          relative_king_square = NO_SQUARE;
+    square_t          relative_piece_square = NO_SQUARE;
+
+    if (view == WHITE) {
+        relative_king_square  = king_square;
+        relative_piece_square = piece_square;
+    } else {
+        relative_king_square  = king_square.flipped_horizontally();
+        relative_piece_square = piece_square.flipped_horizontally();
+    }
+
+    const int king_square_idx = king_square_index(relative_king_square);
+    if (index(king_square.file()) > 3) {
+        relative_piece_square = relative_piece_square.flipped_vertically();
+    }
+
+    const int index = value_of(relative_piece_square) + value_of(piece.type()) * PIECE_TYPE_FACTOR
+                      + (piece.color() == view) * PIECE_COLOR_FACTOR
+                      + king_square_idx * KING_SQUARE_FACTOR;
+
+    return index;
+}
 
 int main() {
-    nnue_t* net = new nnue_t();
-    init_random_weights(net->m_accumulator_layer);
-
-    zobrist_t::init(0xFADA);
-    bb::init();
-    std::cout << bb::pseudo_attack<KNIGHT>(C3, WHITE).to_string() << "\n";
-    g_tt.init(64);
-    tb_init("/home/paul/code/ChePP/scripts/syzygy");
-
     position_t pos;
-    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    bool valid = pos.from_fen("rnbqkbnr/pppppppp/8/8/8/P7/PPPPPPPP/RNBQKBNR w - - 0 1");
+    if (!valid)
+    {
+        throw std::invalid_argument("invalid position");
+    }
 
     std::cout << pos;
 
-    size_t out;
+    //FileSource weight_source{"engine/src/network.net"};
+    MmapSource weight_source{network_net};
+    Deserializer deserializer{weight_source};
+    DotNetParser parser{deserializer};
 
-    perft(pos, 1, out);
+    using AccumulatorT = Accumulator<int16_t, 512, 16 * 12 * 64>;
+    using ReluT = ReLU<int16_t, 1024>;
+    using DenseT = Dense<int16_t, int32_t, 1024, 1>;
+    using QuantT = Quantizer<int32_t, 1, 32 * 128>;
+    //using SigmoidT = Sigmoid<float, 1, 2.5f/400>;
 
-    std::cout << out << std::endl;
+    using Net = NNUE<AccumulatorT, ReluT, DenseT, QuantT>;
 
-    move_list_t moves;
-    gen_legal<WHITE>(pos, moves);
-    for (size_t i = 0; i < moves.size(); ++i)
+    Net net{};
+    parser.load_network(net);
+
+    std::pair<AccumulatorInput, AccumulatorInput> acc_in {};
+    auto& [acc_in_w, acc_in_b] = acc_in;
+    acc_in_w.clear();
+    acc_in_b.clear();
+
+    for (square_t sq = A1; sq <= H8; ++sq)
     {
-        const auto mv = moves[i];
-        std::cout << mv << std::endl;
+        if (pos.piece_at(sq) == NO_PIECE) continue;
+        int idx_w = index(pos.piece_at(sq), sq, pos.ksq(WHITE), WHITE);
+        int idx_b = index(pos.piece_at(sq), sq, pos.ksq(BLACK), BLACK);
+        acc_in_w.add<true>(idx_w);
+        acc_in_b.add<true>(idx_b);
     }
 
 
-    net->refresh_accumulator(pos, WHITE);
-    net->refresh_accumulator(pos, BLACK);
+    DenseBuffer<int32_t, 1> output;
 
-    std::cout << "After refresh:\n";
-    print_accumulator(net->m_accumulator_stack[net->m_accumulator_idx], WHITE);
-    print_accumulator(net->m_accumulator_stack[net->m_accumulator_idx], BLACK);
+    net.forward(acc_in, output);
+    std::cout << output[0] << '\n';
 
-    constexpr move_t move = move_t::make<NORMAL>(E2, E4);
-    pos.do_move(move);
-
-
-
-    constexpr int iterations = 1'000'000;
-
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (int i = 0; i < iterations; ++i) {
-            net->push_accumulator();
-            net->add_dirty_move<WHITE>(pos, move);
-            net->update_accumulator(pos, WHITE);
-            net->update_accumulator(pos, BLACK);
-            net->pop_accumulator();
-        }
-
-        auto end = std::chrono::high_resolution_clock::now();
-        auto total_ns = duration_cast<std::chrono::nanoseconds>(end - start).count();
-        double avg_ns = static_cast<double>(total_ns) / iterations;
-
-        std::cout << "Average time per iteration: " << avg_ns << " ns\n";
-
-    std::cout << "After move E2->E4 and update:\n";
-    print_accumulator(net->m_accumulator_stack[net->m_accumulator_idx], WHITE);
-    print_accumulator(net->m_accumulator_stack[net->m_accumulator_idx], BLACK);
-
-
-
-    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-
-
-    zobrist_t::init(0xFADA);
-    bb::init();
-    g_tt.init(64);
-    tb_init("/home/paul/code/ChePP/scripts/syzygy");
-
-    std::cout << TB_LARGEST << std::endl;
-
-
-
-    //pos.from_fen("k7/8/B2NK3/8/8/8/8/8 w - - 0 1");
-    //pos.from_fen("r1bq1rk1/pp3ppp/2n1pn2/2bp4/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 10");
-    //pos.from_fen("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
-    pos.from_fen("8/8/p1b5/8/2k5/1pP2P2/3K4/3N4 w - - 0 1");
-    std::cout << pos;
-
-
-
-    for (int i = 0; i < 50; i++)
-    {
-        const auto mv = find_best_move<WHITE>(pos, 10);
-        g_tt.new_generation();
-        pos.do_move(mv);
-        std::cout << pos;
-        const auto mv2 = find_best_move<BLACK>(pos, 10);
-        g_tt.new_generation();
-        pos.do_move(mv2);
-        std::cout << pos;
-    }
-
+    return 0;
 }

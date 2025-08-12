@@ -484,6 +484,9 @@ struct square_t
 
     [[nodiscard]] constexpr square_t flipped_horizontally() const noexcept { return square_t{file(), RANK_8 - rank()}; }
 
+    [[nodiscard]] constexpr square_t flipped_vertically() const noexcept { return square_t{FILE_H - file(), rank()}; }
+
+
     value_type m_val;
     friend enum_utils<square_t>;
 };
