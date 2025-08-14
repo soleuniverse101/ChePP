@@ -1009,16 +1009,16 @@ class move_t
         return static_cast<castling_type_t>(m_data >> 12 & 0b11);
     }
 
-    [[nodiscard]] std::string to_string() const
-    {
-        std::ostringstream ss;
-        ss << from_sq() << to_sq();
-        if (type_of() == PROMOTION)
-        {
-            ss << promotion_type();
+    [[nodiscard]] std::string to_string() const {
+        std::ostringstream s{};
+        s << from_sq() << to_sq();
+        if (type_of() == PROMOTION) {
+            s << promotion_type();
         }
-        return ss.str();
+        return s.str();
     }
+
+    static constexpr std::optional<move_t> from_uci(const std::string_view& sv);
 
     friend std::ostream& operator<<(std::ostream& os, const move_t mv) { return os << mv.to_string(); }
 
@@ -1098,6 +1098,29 @@ constexpr castling_rights_t CASTLING_Kkq{WHITE_KINGSIDE, BLACK_KINGSIDE, BLACK_Q
 constexpr castling_rights_t CASTLING_Qkq{WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
 
 constexpr castling_rights_t CASTLING_KQkq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+constexpr std::optional<move_t> move_t::from_uci(const std::string_view& sv)
+{
+    if (!(sv.size() == 4 || sv.size() == 5))
+        return std::nullopt;
+
+    const auto from = from_string<square_t>(sv.substr(0, 2));
+    const auto to   = from_string<square_t>(sv.substr(2, 2));
+
+    if (!from || !to)
+        return std::nullopt;
+
+    if (sv.size() == 5)
+    {
+        const auto pt = from_string<piece_type_t>(sv.substr(4, 1));
+        if (!pt)
+            return std::nullopt;
+        return make<PROMOTION>(*from, *to, *pt);
+    }
+
+    return make<NORMAL>(*from, *to);
+}
+
 
 template <>
 struct enum_utils<castling_rights_t>

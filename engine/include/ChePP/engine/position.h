@@ -21,10 +21,16 @@ class position_t
               m_halfmove_clock(0)
         {
         }
-        state_t(const state_t& prev)
-            : m_ep_square(NO_SQUARE), m_crs(prev.m_crs), m_hash(prev.m_hash), m_taken(NO_PIECE),
-              m_halfmove_clock(prev.m_halfmove_clock)
+
+        static state_t from_prev(const state_t& prev)
         {
+            state_t res;
+            res.m_crs = prev.m_crs;
+            res.m_hash = prev.m_hash;
+            res.m_halfmove_clock = prev.m_halfmove_clock;
+            res.m_ep_square = NO_SQUARE;
+            res.m_taken = NO_PIECE;
+            return res;
         }
 
         [[nodiscard]] square_t ep_square() const { return m_ep_square; }
@@ -114,10 +120,11 @@ class position_t
     [[nodiscard]] bool     is_draw() const;
     [[nodiscard]] unsigned wdl_probe() const;
     [[nodiscard]] unsigned dtz_probe() const;
+    std::optional<move_t>  from_uci(const std::string_view& uci) const;
 
     void push_state()
     {
-        m_states.at(m_state_idx + 1) = state_t(m_states.at(m_state_idx));
+        m_states.at(m_state_idx + 1) = state_t::from_prev(m_states.at(m_state_idx));
         m_state_idx++;
     }
 
@@ -181,9 +188,8 @@ inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
 {
     // if a piece attacks a square sq2 from a square sq1 it would attack sq1 from sq2
     // exception made for pawns where this is true only with reversed colors
-    return (bb::attacks<QUEEN>(sq, occupancy()) & pieces_bb(QUEEN)) |
-           (bb::attacks<ROOK>(sq, occupancy()) & pieces_bb(ROOK)) |
-           (bb::attacks<BISHOP>(sq, occupancy()) & pieces_bb(BISHOP)) |
+    return (bb::attacks<ROOK>(sq, occupancy()) & pieces_bb(ROOK, QUEEN)) |
+           (bb::attacks<BISHOP>(sq, occupancy()) & pieces_bb(BISHOP, QUEEN)) |
            (bb::attacks<KNIGHT>(sq, occupancy()) & pieces_bb(KNIGHT)) |
            (bb::attacks<PAWN>(sq, occupancy(), BLACK) & pieces_bb(WHITE, PAWN)) |
            (bb::attacks<PAWN>(sq, occupancy(), WHITE) & pieces_bb(BLACK, PAWN)) |
@@ -394,7 +400,7 @@ inline std::string position_t::to_string() const
 
     for (auto rank = RANK_1; rank <= RANK_8; ++rank)
     {
-        res << index(rank) + 1 << " ";
+        res << index(RANK_8 - rank) + 1 << " ";
         for (auto file = FILE_A; file <= FILE_H; ++file)
         {
             const square_t sq{file, RANK_8 - rank};
@@ -681,7 +687,7 @@ inline bool position_t::is_draw() const
     size_t       idx    = m_state_idx;
     while (idx > 0)
     {
-        state_t state = m_states.at(--idx);
+        const state_t& state = m_states.at(--idx);
         if (state.halfmove_clock() == 0 && idx != 0)
         {
             return false;
@@ -715,5 +721,30 @@ inline unsigned position_t::dtz_probe() const
                          pieces_bb(KNIGHT).value(), pieces_bb(PAWN).value(), static_cast<unsigned>(halfmove_clock()),
                          crs().mask(), ep_sq, color() == WHITE, nullptr);
 }
+
+inline std::optional<move_t> position_t::from_uci(const std::string_view& uci) const
+{
+    const auto incomplete = move_t::from_uci(uci);
+    if (!incomplete) return std::nullopt;
+    if (piece_type_at(incomplete->from_sq()) == PAWN && ep_square() == incomplete->to_sq())
+    {
+        return move_t::make<EN_PASSANT>(incomplete->from_sq(), incomplete->to_sq());
+    }
+    if (piece_type_at(incomplete->from_sq()) == KING)
+    {
+        for (const auto type : values<castling_type_t>)
+        {
+            if (!crs().has(type)) continue;
+            if (const auto [k_from, k_to] = type.king_move();
+                incomplete->from_sq() == k_from && incomplete->to_sq() == k_to)
+            {
+                return move_t::make<CASTLING>(k_from, k_to, type);
+            }
+        }
+    }
+    return incomplete;
+
+}
+
 
 #endif

@@ -5,18 +5,17 @@
 #ifndef NNUE_H
 #define NNUE_H
 
-#include "movegen.h"
 #include "string.h"
 #include "types.h"
 
 #include <any>
+#include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <fstream>
 #include <hwy/highway.h>
 #include <hwy/highway_export.h>
-#include <array>
-#include <cstddef>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -26,15 +25,96 @@
 
 #include "network_net.h"
 
-
+#include <functional>
 
 HWY_BEFORE_NAMESPACE();
 namespace hn = hwy::HWY_NAMESPACE;
 HWY_AFTER_NAMESPACE();
 
+struct FeatureContext
+{
+    explicit FeatureContext(const position_t& pos, const piece_t piece, const square_t piece_square)
+        : m_piece(piece), m_piece_square(piece_square)
+    {
+    }
+
+    piece_t  m_piece;
+    square_t m_piece_square;
+};
+
+template <typename Derived, typename T, std::size_t NFeatures>
+struct FeatureExtractorBase
+{
+    static constexpr std::size_t n_features = NFeatures;
+    using FeatureT                          = T;
+
+    template <color_t view>
+    static FeatureT extract(const position_t& pos, const square_t square, const piece_t piece)
+    {
+        return Derived::template extract<view>(pos, square, piece);
+    }
+};
+
+struct KoiFeatureExtractor : FeatureExtractorBase<KoiFeatureExtractor, uint32_t, 16 * 12 * 64>
+{
+    template <color_t view>
+    static FeatureT extract(const position_t& pos, const square_t piece_square, const piece_t piece)
+    {
+        constexpr int PIECE_TYPE_FACTOR  = 64;
+        constexpr int PIECE_COLOR_FACTOR = PIECE_TYPE_FACTOR * 6;
+        constexpr int KING_SQUARE_FACTOR = PIECE_COLOR_FACTOR * 2;
+
+        square_t relative_king_square{NO_SQUARE};
+        square_t relative_piece_square{NO_SQUARE};
+
+        square_t king_square = pos.ksq(view);
+
+        if (view == WHITE)
+        {
+            relative_king_square  = king_square;
+            relative_piece_square = piece_square;
+        }
+        else
+        {
+            relative_king_square  = king_square.flipped_horizontally();
+            relative_piece_square = piece_square.flipped_horizontally();
+        }
+
+        const int king_square_idx = king_square_index(relative_king_square);
+        if (index(king_square.file()) > 3)
+        {
+            relative_piece_square = relative_piece_square.flipped_vertically();
+        }
+
+        const int index = value_of(relative_piece_square) + value_of(piece.type()) * PIECE_TYPE_FACTOR +
+                          (piece.color() == view) * PIECE_COLOR_FACTOR + king_square_idx * KING_SQUARE_FACTOR;
+
+        return index;
+    }
+
+  private:
+    static int king_square_index(const square_t relative_king_square)
+    {
+
+        // clang-format off
+        constexpr enum_array<square_t, int> indices{
+            0,  1,  2,  3,  3,  2,  1,  0,
+            4,  5,  6,  7,  7,  6,  5,  4,
+            8,  9,  10, 11, 11, 10, 9,  8,
+            8,  9,  10, 11, 11, 10, 9,  8,
+            12, 12, 13, 13, 13, 13, 12, 12,
+            12, 12, 13, 13, 13, 13, 12, 12,
+            14, 14, 15, 15, 15, 15, 14, 14,
+            14, 14, 15, 15, 15, 15, 14, 14,
+        };
+        // clang-format on
+        return indices[relative_king_square];
+    }
+};
+
 struct WeightSource
 {
-    virtual ~WeightSource()                 = default;
+    virtual ~WeightSource()                    = default;
     virtual void read_bytes(void* dst, long n) = 0;
 };
 
@@ -68,7 +148,7 @@ struct FileSource final : WeightSource
 struct Deserializer
 {
     WeightSource& src;
-    bool             swap_endian;
+    bool          swap_endian;
 
     explicit Deserializer(WeightSource& s, const bool swap = false) : src(s), swap_endian(swap) {}
 
@@ -113,7 +193,6 @@ struct Deserializer
         else if constexpr (sizeof(T) == 4)
         {
             return std::byteswap(reinterpret_cast<std::uint32_t&>(v));
-
         }
         else if constexpr (sizeof(T) == 8)
         {
@@ -133,337 +212,435 @@ struct NnueParser
 
     virtual ~NnueParser() = default;
 
-    virtual void parse_header() const  = 0;
+    virtual void parse_header() const       = 0;
     virtual void parse_layer_header() const = 0;
 
     template <typename Network>
-    void load_network(Network& net) const {
+    void load_network(Network& net) const
+    {
         parse_header();
         auto layers = net.layers();
-        std::apply([&](auto&... layer_ptr) {
-            (load_one_layer(*layer_ptr), ...);
-        }, layers);
+        std::apply([&](auto&... layer) { (load_one_layer(layer), ...); }, layers);
     }
 
-private:
+  private:
     template <typename Layer>
-    void load_one_layer(Layer& layer) const {
+    void load_one_layer(Layer& layer) const
+    {
         parse_layer_header();
         layer.init_impl(m_deserializer);
     }
 };
 
-struct DotNetParser final : NnueParser {
+struct DotNetParser final : NnueParser
+{
 
     explicit DotNetParser(const Deserializer& deserializer) : NnueParser(deserializer) {}
 
-    void parse_header() const override
-    {
-    }
+    void parse_header() const override {}
 
-    void parse_layer_header() const override
-    {
-    }
+    void parse_layer_header() const override {}
 };
 
-
-
 template <typename T, std::size_t N>
-struct DenseBuffer {
-    using value_type = T;
+struct DenseBuffer
+{
+    using value_type                    = T;
     static constexpr std::size_t size_v = N;
 
     std::array<T, N> data{};
 
     constexpr std::size_t size() const noexcept { return N; }
-    T*       data_ptr() noexcept { return data.data(); }
-    const T* data_ptr() const noexcept { return data.data(); }
+    T*                    data_ptr() noexcept { return data.data(); }
+    const T*              data_ptr() const noexcept { return data.data(); }
 
     T&       operator[](std::size_t i) noexcept { return data[i]; }
     const T& operator[](std::size_t i) const noexcept { return data[i]; }
 };
 
-struct AccumulatorInput
+template <typename Derived, typename InputBufferT, typename OutputBufferT>
+struct LayerBase
 {
-    static constexpr std::size_t size_v = 1;
-
-    void clear()
-    {
-        m_added.clear();
-        m_removed.clear();
-    }
-
-    template <bool IsAdd>
-    void add(const std::size_t idx)
-    {
-        if constexpr (IsAdd)
-        {
-            m_added.push_back(idx);
-        }
-        else
-        {
-            m_removed.push_back(idx);
-        }
-    }
-
-    [[nodiscard]] auto& added() const
-    {
-        return m_added;
-    }
-
-    [[nodiscard]] auto& removed() const
-    {
-        return m_removed;
-    }
-
-    [[nodiscard]] bool refresh() const
-    {
-        return m_refresh;
-    }
-
-private:
-    std::vector<std::size_t> m_added{};
-    std::vector<std::size_t> m_removed{};
-    bool m_refresh = false;
-};
-
-
-
-
-template <typename Derived,
-          typename InputBufferT,
-          typename OutputBufferT>
-struct LayerBase {
     using input_buffer_type  = InputBufferT;
     using output_buffer_type = OutputBufferT;
 
     static constexpr std::size_t input_size_v  = InputBufferT::size_v;
     static constexpr std::size_t output_size_v = OutputBufferT::size_v;
 
-    void forward(const InputBufferT& in, OutputBufferT& out) const {
+    void forward(const InputBufferT& in, OutputBufferT& out) const
+    {
         static_cast<const Derived*>(this)->forward_impl(in, out);
     }
 
     template <typename Deserializer>
-    void init(const Deserializer& d) {
+    void init(const Deserializer& d)
+    {
         static_cast<Derived*>(this)->init_impl(d);
     }
 };
 
-
 template <typename T, std::size_t Size, std::size_t Scale>
-struct Quantizer : LayerBase<Quantizer<T, Size, Scale>, DenseBuffer<T, Size>, DenseBuffer<T, Size>> {
+struct Quantizer : LayerBase<Quantizer<T, Size, Scale>, DenseBuffer<T, Size>, DenseBuffer<T, Size>>
+{
     using Input  = DenseBuffer<T, Size>;
     using Output = DenseBuffer<T, Size>;
 
-    void forward_impl(const Input& in, Output& out) const {
-        for (std::size_t i = 0; i < Size; ++i) out[i] = in[i] / static_cast<T>(Scale);
+    void forward_impl(const Input& in, Output& out) const
+    {
+        for (std::size_t i = 0; i < Size; ++i)
+            out[i] = in[i] / static_cast<T>(Scale);
     }
 
     template <typename Deserializer>
-    void init_impl(const Deserializer&) {}
+    void init_impl(const Deserializer&)
+    {
+    }
 };
 
 template <typename InputT, typename OutputT, std::size_t InSz, std::size_t OutSz>
-struct Dense : LayerBase<Dense<InputT, OutputT, InSz, OutSz>, DenseBuffer<InputT, InSz>, DenseBuffer<OutputT, OutSz>> {
+struct Dense : LayerBase<Dense<InputT, OutputT, InSz, OutSz>, DenseBuffer<InputT, InSz>, DenseBuffer<OutputT, OutSz>>
+{
     using Input  = DenseBuffer<InputT, InSz>;
     using Output = DenseBuffer<OutputT, OutSz>;
 
-    std::array<std::array<InputT, InSz>, OutSz> weights{};
-    std::array<OutputT, OutSz>                   bias{};
+    using WeightsT = std::array<InputT, InSz * OutSz>;
+    using BiasT    = std::array<OutputT, OutSz>;
 
-    void forward_impl(const Input& in, Output& out) const {
-        for (std::size_t o = 0; o < OutSz; ++o) {
-            OutputT sum = bias[o];
-            for (std::size_t i = 0; i < InSz; ++i) sum += static_cast<OutputT>(in[i]) * weights[o][i];
+    std::unique_ptr<WeightsT> m_weights;
+    std::unique_ptr<BiasT>    m_biases;
+
+    void forward_impl(const Input& in, Output& out) const
+    {
+        for (std::size_t o = 0; o < OutSz; ++o)
+        {
+            OutputT sum = m_biases->data()[o];
+            for (std::size_t i = 0; i < InSz; ++i)
+                sum += static_cast<OutputT>(in[i]) * m_weights->data()[o * InSz + i];
             out[o] = sum;
         }
     }
 
     template <typename Deserializer>
-    void init_impl(const Deserializer& d) {
-        for (size_t o = 0; o < OutSz; ++o) d.template read_array<InputT, InputT>(weights[o].data(), InSz);
-        d.template read_array<OutputT, OutputT>(bias.data(), OutSz);
+    void init_impl(const Deserializer& d)
+    {
+        m_weights = std::make_unique<WeightsT>();
+        m_biases  = std::make_unique<BiasT>();
+        if (!m_weights || !m_biases)
+        {
+            throw std::runtime_error("Failed to allocate memory for deserialization");
+        }
+        for (size_t o = 0; o < OutSz; ++o)
+            d.template read_array<InputT, InputT>(&m_weights->at(o * InSz), InSz);
+        d.template read_array<OutputT, OutputT>(&m_biases->at(0), OutSz);
     }
 };
 
 template <typename T, std::size_t Size>
-struct ReLU : LayerBase<ReLU<T, Size>, DenseBuffer<T, Size>, DenseBuffer<T, Size>> {
+struct ReLU : LayerBase<ReLU<T, Size>, DenseBuffer<T, Size>, DenseBuffer<T, Size>>
+{
     using Input  = DenseBuffer<T, Size>;
     using Output = DenseBuffer<T, Size>;
 
-    void forward_impl(const Input& in, Output& out) const {
-        for (std::size_t i = 0; i < Size; ++i) out[i] = std::max(T(0), in[i]);
+    void forward_impl(const Input& in, Output& out) const
+    {
+        for (std::size_t i = 0; i < Size; ++i)
+            out[i] = std::max(T(0), in[i]);
     }
 
     template <typename Deserializer>
-    void init_impl(const Deserializer&) {}
+    void init_impl(const Deserializer&)
+    {
+    }
 };
 
 template <typename T, std::size_t Size, float ScaleFactor>
-struct Sigmoid : LayerBase<Sigmoid<T, Size, ScaleFactor>, DenseBuffer<T, Size>, DenseBuffer<T, Size>> {
+struct Sigmoid : LayerBase<Sigmoid<T, Size, ScaleFactor>, DenseBuffer<T, Size>, DenseBuffer<T, Size>>
+{
     using Input  = DenseBuffer<T, Size>;
     using Output = DenseBuffer<T, Size>;
 
-    void forward_impl(const Input& in, Output& out) const {
-        for (std::size_t i = 0; i < Size; ++i) out[i] = T(1) / (T(1) + std::exp(-in[i] * ScaleFactor));
+    void forward_impl(const Input& in, Output& out) const
+    {
+        for (std::size_t i = 0; i < Size; ++i)
+            out[i] = T(1) / (T(1) + std::exp(-in[i] * ScaleFactor));
     }
 
     template <typename Deserializer>
-    void init_impl(const Deserializer&) {}
+    void init_impl(const Deserializer&)
+    {
+    }
 };
 
-
 template <typename T>
-struct is_accumulator : std::false_type {};
+struct is_accumulator : std::false_type
+{
+};
 
 template <typename T>
 inline constexpr bool is_accumulator_v = is_accumulator<T>::value;
 
+template <typename T, std::size_t OutSz, typename FeatureExtractorT>
+struct Accumulator : LayerBase<Accumulator<T, OutSz, FeatureExtractorT>, color_t, DenseBuffer<T, 2 * OutSz>>
+{
+    using OutputT         = DenseBuffer<T, 2 * OutSz>;
+    using OrientedOutputT = DenseBuffer<T, OutSz>;
 
-template <typename OutT, std::size_t OutSz, std::size_t NFeatures>
-struct Accumulator : LayerBase<Accumulator<OutT, OutSz, NFeatures>, std::pair<AccumulatorInput, AccumulatorInput>, DenseBuffer<OutT, 2 * OutSz>> {
+    static constexpr std::size_t n_features = FeatureExtractorT::n_features;
 
-    using OutputDense = DenseBuffer<OutT, 2 * OutSz>;
-    alignas(64) std::array<OutT, OutSz * NFeatures> m_weights{};
-    alignas(64) std::array<OutT, OutSz> m_bias{};
+    using WeightsT = std::array<T, OutSz * n_features>;
+    using BiasT    = std::array<T, OutSz>;
 
-    void forward_impl(const std::pair<AccumulatorInput, AccumulatorInput>& in, OutputDense& out) const {
-        const auto [white, black] = in;
-        if (white.refresh())
-        {
-            std::memcpy(out.data_ptr(), m_bias.data(), OutSz * sizeof(OutT));
-        }
-        add_features(white.added(), out.data_ptr());
-        remove_features(white.removed(), out.data_ptr());
-        if (black.refresh())
-        {
-            std::memcpy(out.data_ptr() + OutSz, m_bias.data(), OutSz * sizeof(OutT));
-        }
-        add_features(black.added(), out.data_ptr() + OutSz);
-        remove_features(black.removed(), out.data_ptr() + OutSz);
+    std::shared_ptr<WeightsT> m_weights;
+    std::shared_ptr<BiasT>    m_biases;
+
+    using StateT = OrientedOutputT;
+    enum_array<color_t, StateT> m_state;
+
+    using FeatureT = FeatureExtractorT::FeatureT;
+
+    Accumulator() = default;
+
+    Accumulator(const Accumulator& other)
+        : m_weights(std::move(other.m_weights)), m_biases(std::move(other.m_biases)), m_state(other.m_state)
+    {
     }
 
-    void add_features(const std::vector<std::size_t>& added, OutT* out) const {
-        for (const auto idx : added) {
-            assert(idx < NFeatures);
-            for (std::size_t o = 0; o < OutSz; ++o) out[o] += m_weights[idx * OutSz + o];
+    template <color_t view>
+    void add_feature(const position_t& pos, const square_t piece_square, const piece_t pc)
+    {
+        add_feature_impl<view>(FeatureExtractorT::template extract<view>(pos, piece_square, pc));
+    }
 
+    void add_feature(const position_t& pos, const square_t piece_square, const piece_t pc)
+    {
+        add_feature<WHITE>(pos, piece_square, pc);
+        add_feature<BLACK>(pos, piece_square, pc);
+    }
+
+    template <color_t view>
+    void remove_feature(const position_t& pos, const square_t piece_square, const piece_t pc)
+    {
+        remove_feature_impl<view>(FeatureExtractorT::template extract<view>(pos, piece_square, pc));
+    }
+
+    void remove_feature(const position_t& pos, const square_t piece_square, const piece_t pc)
+    {
+        remove_feature<WHITE>(pos, piece_square, pc);
+        remove_feature<BLACK>(pos, piece_square, pc);
+    }
+
+    template <color_t view>
+    void refresh(const position_t& pos)
+    {
+        std::memcpy(m_state.at(view).data_ptr(), m_biases->data(), OutSz * sizeof(T));
+        bitboard_t pieces = pos.occupancy();
+        while (pieces)
+        {
+            const square_t sq{pieces.pops_lsb()};
+            add_feature<view>(pos, sq, pos.piece_at(sq));
         }
     }
 
-    void remove_features(const std::vector<std::size_t>& removed, OutT* out) const {
-        for (const auto idx : removed) {
-            assert(idx < NFeatures);
-            for (std::size_t o = 0; o < OutSz; ++o) out[o] -= m_weights[idx * OutSz + o];
+    void forward_impl(const color_t& c, OutputT& out) const
+    {
+        for (std::size_t i = 0; i < OutSz; ++i)
+        {
+            out[i]         = m_state.at(c)[i];
+            out[i + OutSz] = m_state.at(~c)[i];
         }
     }
 
     template <typename Deserializer>
-    void init_impl(const Deserializer& d) {
-        for (size_t f = 0; f < NFeatures; ++f) d.template read_array<OutT, OutT>(m_weights.data() + f * OutSz, OutSz);
-        d.template read_array<OutT, OutT>(m_bias.data(), OutSz);
+    void init_impl(const Deserializer& d)
+    {
+        m_weights = std::make_unique<WeightsT>();
+        m_biases  = std::make_unique<BiasT>();
+        if (!m_weights || !m_biases)
+        {
+            throw std::runtime_error("Failed to allocate memory for deserialization");
+        }
+        for (size_t o = 0; o < n_features; ++o)
+            d.template read_array<T, T>(&m_weights->at(o * OutSz), OutSz);
+        d.template read_array<T, T>(&m_biases->at(0), OutSz);
+    }
 
+  private:
+    template <color_t view>
+    void add_feature_impl(const FeatureT idx)
+    {
+        for (std::size_t o = 0; o < OutSz; ++o)
+            m_state.at(view)[o] += m_weights->data()[idx * OutSz + o];
+    }
+
+    template <color_t view>
+    void remove_feature_impl(const FeatureT idx)
+    {
+        for (std::size_t o = 0; o < OutSz; ++o)
+            m_state.at(view)[o] -= m_weights->data()[idx * OutSz + o];
     }
 };
 
-template <typename OutT, std::size_t OutSz, std::size_t NFeatures>
-struct is_accumulator<Accumulator<OutT, OutSz, NFeatures>> : std::true_type {};
+template <typename OutT, std::size_t OutSz, typename FeatureExtractorT>
+struct is_accumulator<Accumulator<OutT, OutSz, FeatureExtractorT>> : std::true_type
+{
+};
 
-template <typename... LayerTs>
-struct Network {
+template <typename AccumulatorT, typename... LayerTs>
+struct NNUE
+{
     static_assert((std::is_class_v<LayerTs> && ...), "All LayerTs must be class types");
+    static_assert(is_accumulator_v<AccumulatorT>, "First template arg must be an accumulator");
 
-    std::tuple<std::unique_ptr<LayerTs>...> m_layers;
+    using AccBufT = typename AccumulatorT::output_buffer_type;
 
-
-    Network(std::unique_ptr<LayerTs>... ls) : m_layers(std::move(ls)...) {}
-    Network() : m_layers(std::make_unique<LayerTs>()...) {}
-
-    auto layers() {
-        return std::apply([](auto&... ptrs) {
-            return std::forward_as_tuple(ptrs...);
-        }, m_layers);
+    explicit NNUE(LayerTs... ls)
+        : m_layers(std::move(ls)...)
+    {
+        m_accumulator_stack.emplace_back();
     }
 
-    auto layers() const {
-        return std::apply([](auto const&... ptrs) {
-            return std::forward_as_tuple(ptrs...);
-        }, m_layers);
+    auto layers()
+    {
+        return std::tuple_cat(std::forward_as_tuple(accumulator()),
+                              std::apply([](auto&... layers) {
+                                  return std::forward_as_tuple(layers...);
+                              }, m_layers));
     }
 
+    auto layers() const
+    {
+        return std::tuple_cat(std::forward_as_tuple(accumulator()),
+                              std::apply([](auto const&... layers) {
+                                  return std::forward_as_tuple(layers...);
+                              }, m_layers));
+    }
 
-    template <typename FirstIn, typename LastOut>
-    void forward(const FirstIn& in, LastOut& out) const {
-        forward_impl<0>(in, out);
+    AccumulatorT&       accumulator()       { return m_accumulator_stack.back(); }
+    const AccumulatorT& accumulator() const { return m_accumulator_stack.back(); }
+
+    template <typename LastOut>
+    void forward(color_t c, LastOut& out) const
+    {
+        AccBufT acc_out;
+        m_accumulator_stack.back().forward(c, acc_out);
+        forward_impl<0>(acc_out, out);
+    }
+
+    template <color_t us>
+    void do_move(const position_t& pos, const move_t move)
+    {
+        push_state();
+        constexpr color_t them = ~us;
+        switch (move.type_of())
+        {
+            case CASTLING:
+            {
+                auto [k_from, k_to] = move.castling_type().king_move();
+                auto [r_from, r_to] = move.castling_type().rook_move();
+                accumulator().template add_feature<them>(pos, r_to, piece_t{us, ROOK});
+                accumulator().template remove_feature<them>(pos, r_from, piece_t{us, ROOK});
+                accumulator().template add_feature<them>(pos, k_to, piece_t{us, KING});
+                accumulator().template remove_feature<them>(pos, k_from, piece_t{us, KING});
+                accumulator().template refresh<us>(pos);
+                break;
+            }
+            case EN_PASSANT:
+            {
+                constexpr direction_t down = relative_dir<us, SOUTH>;
+                accumulator().remove_feature(pos, move.from_sq(), piece_t{us, PAWN});
+                accumulator().add_feature(pos, move.to_sq(), piece_t{us, PAWN});
+                accumulator().remove_feature(pos, move.to_sq() - down, piece_t{them, PAWN});
+                break;
+            }
+            case NORMAL:
+            {
+                if (pos.piece_at(move.to_sq()).type() == KING)
+                {
+                    accumulator().template refresh<us>(pos);
+                    accumulator().template add_feature<them>(pos, move.to_sq(), piece_t{us, KING});
+                    accumulator().template remove_feature<them>(pos, move.from_sq(), piece_t{us, KING});
+                    if (const piece_t taken = pos.taken(); taken != NO_PIECE)
+                    {
+                        accumulator().template remove_feature<them>(pos, move.to_sq(), taken);
+                    }
+                }
+                else
+                {
+                    accumulator().add_feature(pos, move.to_sq(), pos.piece_at(move.to_sq()));
+                    accumulator().remove_feature(pos, move.from_sq(), pos.piece_at(move.to_sq()));
+                    if (const piece_t taken = pos.taken(); taken != NO_PIECE)
+                    {
+                        accumulator().remove_feature(pos, move.to_sq(), taken);
+                    }
+                }
+                break;
+            }
+            case PROMOTION:
+            {
+                accumulator().add_feature(pos, move.to_sq(), piece_t{us, move.promotion_type()});
+                accumulator().remove_feature(pos, move.from_sq(), piece_t{us, PAWN});
+                if (const piece_t taken = pos.taken(); taken != NO_PIECE)
+                {
+                    accumulator().remove_feature(pos, move.to_sq(), taken);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    void undo_move()
+    {
+        pop_state();
     }
 
 private:
+    void push_state() { m_accumulator_stack.emplace_back(accumulator()); }
+
+    void pop_state()
+    {
+        if (m_accumulator_stack.empty())
+            throw std::runtime_error("Accumulator stack underflow");
+        m_accumulator_stack.pop_back();
+    }
+
     template <std::size_t Index, typename InBuf, typename OutBuf>
-    void forward_impl(const InBuf& in, OutBuf& out) const {
+    void forward_impl(const InBuf& in, OutBuf& out) const
+    {
         using LayerT = std::tuple_element_t<Index, std::tuple<LayerTs...>>;
         static_assert(LayerT::input_size_v == InBuf::size_v, "Input size mismatch");
 
-        auto& layer = *std::get<Index>(m_layers);
-        typename LayerT::output_buffer_type tmp;
+        auto&                               layer = std::get<Index>(m_layers);
+        typename LayerT::output_buffer_type tmp{};
         layer.forward(in, tmp);
 
-        if constexpr (Index + 1 == sizeof...(LayerTs)) {
+        if constexpr (Index + 1 == sizeof...(LayerTs))
+        {
             static_assert(LayerT::output_size_v == OutBuf::size_v, "Output size mismatch");
             out = tmp;
-        } else {
+        }
+        else
+        {
             forward_impl<Index + 1>(tmp, out);
         }
     }
+
+    std::tuple<LayerTs...> m_layers;
+
+    std::vector<AccumulatorT> m_accumulator_stack{256};
 };
 
+namespace Koi
+{
+    using FeatureExtractorT = KoiFeatureExtractor;
+    using AccumulatorT      = Accumulator<int16_t, 512, FeatureExtractorT>;
+    using ReluT             = ReLU<int16_t, 1024>;
+    using DenseT            = Dense<int16_t, int32_t, 1024, 1>;
+    using QuantT            = Quantizer<int32_t, 1, 32 * 128>;
 
-template <typename AccumulatorT, typename... LayerTs>
-struct NNUE : Network<LayerTs...> {
-    static_assert(is_accumulator_v<AccumulatorT>, "First template arg must be an accumulator");
-
-    using Base = Network<LayerTs...>;
-    using AccBuf = AccumulatorT::output_buffer_type;
-
-    explicit NNUE(std::unique_ptr<AccumulatorT> acc, std::unique_ptr<LayerTs>... ls)
-        : Base(std::move(ls)...), m_accumulator(std::move(acc))
-    {
-        push_state();
-    }
-    NNUE() : NNUE(std::make_unique<AccumulatorT>(),std::make_unique<LayerTs>()...) {}
-
-    void push_state() {
-        m_state_stack.push_back(m_state);
-    }
-
-    void pop_accumulator() {
-        if (m_state_stack.empty())
-            throw std::runtime_error("Accumulator stack underflow");
-        m_state = m_state_stack.back();
-        m_state_stack.pop_back();
-    }
-
-    auto layers() {
-        return std::tuple_cat(std::forward_as_tuple(m_accumulator), Base::layers());
-    }
-
-    auto layers() const {
-        return std::tuple_cat(std::forward_as_tuple(m_accumulator), Base::layers());
-    }
-
-    template <typename LastOut>
-    void forward(const std::pair<AccumulatorInput, AccumulatorInput>& in, LastOut& out) const {
-        m_accumulator->forward(in, m_state);
-        Base::forward(m_state, out);
-    }
-private:
-    std::unique_ptr<AccumulatorT> m_accumulator;
-    std::vector<AccBuf> m_state_stack{};
-    mutable AccumulatorT::output_buffer_type m_state{};
-
-};
-
-
+    using Net = NNUE<AccumulatorT, ReluT, DenseT, QuantT>;
+} // namespace Koi
 
 /**
 

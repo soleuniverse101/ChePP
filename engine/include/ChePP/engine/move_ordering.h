@@ -77,12 +77,12 @@ inline int score_move(const move_t& m, const position_t& pos, const move_t prev_
     return score;
 }
 
-inline void order_moves(const position_t& pos, move_list_t& list, const move_t prev_best = move_t::null()) {
+inline void order_moves(const position_t& pos, move_list_t& list, const move_t prev_best, enum_array<square_t, enum_array<square_t, int>>& history) {
     std::vector<std::pair<int, move_t>> scored;
     scored.reserve(list.size());
 
     for (const auto& m : list) {
-        scored.emplace_back(score_move(m, pos, prev_best), m);
+        scored.emplace_back(score_move(m, pos, prev_best) + history.at(m.from_sq()).at(m.to_sq()), m);
     }
 
     std::ranges::sort(scored, [](auto& a, auto& b) {

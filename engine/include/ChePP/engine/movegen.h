@@ -287,9 +287,9 @@ void gen_tactical(const position_t& pos, move_list_t& list)
     for (size_t i = 0; i < list.size(); ++i)
     {
         move_t mv = list[i];
-        if (pos.is_legal<c>(list[i]) && (pos.is_occupied(mv.to_sq()) || mv.type_of() == PROMOTION))
+        if (pos.is_legal<c>(mv) && ((pos.is_occupied(mv.to_sq()) || mv.type_of() == PROMOTION)))
         {
-            list[idx++] = list[i];
+            list[idx++] = mv;
         }
     }
     list.shrink(list.size() - idx);

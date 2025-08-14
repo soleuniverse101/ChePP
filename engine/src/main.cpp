@@ -66,99 +66,73 @@ void print_accumulator(accumulator_t<nnue_t::s_accumulator_size>& acc, color_t c
 }
 **/
 
-inline int king_square_index(square_t relative_king_square) {
-
-    // clang-format off
-    constexpr enum_array<square_t, int> indices{
-        0,  1,  2,  3,  3,  2,  1,  0,
-        4,  5,  6,  7,  7,  6,  5,  4,
-        8,  9,  10, 11, 11, 10, 9,  8,
-        8,  9,  10, 11, 11, 10, 9,  8,
-        12, 12, 13, 13, 13, 13, 12, 12,
-        12, 12, 13, 13, 13, 13, 12, 12,
-        14, 14, 15, 15, 15, 15, 14, 14,
-        14, 14, 15, 15, 15, 15, 14, 14,
-    };
-    // clang-format on
-
-    return indices[relative_king_square];
-}
-
-inline int index(const piece_t piece, const square_t piece_square, const square_t king_square, const color_t view)
-
-{
-    constexpr int          PIECE_TYPE_FACTOR  = 64;
-    constexpr int          PIECE_COLOR_FACTOR = PIECE_TYPE_FACTOR * 6;
-    constexpr int          KING_SQUARE_FACTOR = PIECE_COLOR_FACTOR * 2;
-
-    square_t          relative_king_square = NO_SQUARE;
-    square_t          relative_piece_square = NO_SQUARE;
-
-    if (view == WHITE) {
-        relative_king_square  = king_square;
-        relative_piece_square = piece_square;
-    } else {
-        relative_king_square  = king_square.flipped_horizontally();
-        relative_piece_square = piece_square.flipped_horizontally();
-    }
-
-    const int king_square_idx = king_square_index(relative_king_square);
-    if (index(king_square.file()) > 3) {
-        relative_piece_square = relative_piece_square.flipped_vertically();
-    }
-
-    const int index = value_of(relative_piece_square) + value_of(piece.type()) * PIECE_TYPE_FACTOR
-                      + (piece.color() == view) * PIECE_COLOR_FACTOR
-                      + king_square_idx * KING_SQUARE_FACTOR;
-
-    return index;
-}
-
 int main() {
+    bb::init();
+    zobrist_t::init(0xFADA);
+    g_tt.init(512);
+    tb_init("/home/paul/code/ChePP/scripts/syzyy");
+
+
     position_t pos;
-    bool valid = pos.from_fen("rnbqkbnr/pppppppp/8/8/8/P7/PPPPPPPP/RNBQKBNR w - - 0 1");
-    if (!valid)
+    if (!pos.from_fen("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - 0 1"))
     {
         throw std::invalid_argument("invalid position");
     }
+    //pos.from_fen("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2KQ w - - 0 1");
+    pos.from_fen("1q2bn2/6pk/2p1pr1p/2Q2p1P/1PP5/5N2/5PP1/4RBK1 w - - 0 1");
+    //pos.from_fen("8/Q5pk/5rnp/5B1q/1PPp4/4R1P1/5P2/3b2K1 w - - 0 9");
+    //pos.from_fen("1k2r3/1p1bP3/2p2p1Q/Ppb5/4Rp1P/2q2N1P/5PB1/6K1 b - - 0 1");
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    pos.from_fen("r2q1rk1/4bppp/1pn1p3/p4b2/1nNP4/4BN2/PP2BPPP/R2Q1RK1 w - - 2 13");
 
     std::cout << pos;
 
     //FileSource weight_source{"engine/src/network.net"};
     MmapSource weight_source{network_net};
-    Deserializer deserializer{weight_source};
-    DotNetParser parser{deserializer};
+    const Deserializer deserializer{weight_source};
+    const DotNetParser parser{deserializer};
 
-    using AccumulatorT = Accumulator<int16_t, 512, 16 * 12 * 64>;
-    using ReluT = ReLU<int16_t, 1024>;
-    using DenseT = Dense<int16_t, int32_t, 1024, 1>;
-    using QuantT = Quantizer<int32_t, 1, 32 * 128>;
-    //using SigmoidT = Sigmoid<float, 1, 2.5f/400>;
-
-    using Net = NNUE<AccumulatorT, ReluT, DenseT, QuantT>;
-
-    Net net{};
+    Koi::Net net{
+        Koi::ReluT{},
+        Koi::DenseT{},
+        Koi::QuantT{},
+    };
     parser.load_network(net);
 
-    std::pair<AccumulatorInput, AccumulatorInput> acc_in {};
-    auto& [acc_in_w, acc_in_b] = acc_in;
-    acc_in_w.clear();
-    acc_in_b.clear();
-
-    for (square_t sq = A1; sq <= H8; ++sq)
+    for (int i = 0; i < 50; i++)
     {
-        if (pos.piece_at(sq) == NO_PIECE) continue;
-        int idx_w = index(pos.piece_at(sq), sq, pos.ksq(WHITE), WHITE);
-        int idx_b = index(pos.piece_at(sq), sq, pos.ksq(BLACK), BLACK);
-        acc_in_w.add<true>(idx_w);
-        acc_in_b.add<true>(idx_b);
+        std::optional<move_t> player_move = std::nullopt;
+        move_list_t moves;
+        gen_legal<WHITE>(pos, moves);
+        while (!player_move)
+        {
+            std::string uci_move;
+            std::cout << "Your move: ";
+            std::cin >> uci_move;
+            player_move = pos.from_uci(uci_move);
+            if (player_move)
+            {
+                if (std::ranges::find(moves, *player_move) == moves.end())
+                {
+                    player_move = std::nullopt;
+                }
+            }
+        }
+        pos.do_move(*player_move);
+        std::cout << pos;
+
+
+        Searcher<BLACK> sw(pos, net, 20, 2000);
+        auto mv = sw.FindBestMove();
+        pos.do_move(mv);
+        std::cout << pos;
+
+
+
+
+
+
     }
-
-
-    DenseBuffer<int32_t, 1> output;
-
-    net.forward(acc_in, output);
-    std::cout << output[0] << '\n';
 
     return 0;
 }
