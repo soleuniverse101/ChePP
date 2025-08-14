@@ -78,12 +78,13 @@ int main() {
     {
         throw std::invalid_argument("invalid position");
     }
-    //pos.from_fen("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2KQ w - - 0 1");
-    pos.from_fen("1q2bn2/6pk/2p1pr1p/2Q2p1P/1PP5/5N2/5PP1/4RBK1 w - - 0 1");
+    pos.from_fen("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - 0 1");
+    //pos.from_fen("1q2bn2/6pk/2p1pr1p/2Q2p1P/1PP5/5N2/5PP1/4RBK1 w - - 0 1");
     //pos.from_fen("8/Q5pk/5rnp/5B1q/1PPp4/4R1P1/5P2/3b2K1 w - - 0 9");
     //pos.from_fen("1k2r3/1p1bP3/2p2p1Q/Ppb5/4Rp1P/2q2N1P/5PB1/6K1 b - - 0 1");
-    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    pos.from_fen("r2q1rk1/4bppp/1pn1p3/p4b2/1nNP4/4BN2/PP2BPPP/R2Q1RK1 w - - 2 13");
+    //pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    //pos.from_fen("r2q1rk1/4bppp/1pn1p3/p4b2/1nNP4/4BN2/PP2BPPP/R2Q1RK1 w - - 2 13");
+    //pos.from_fen("2kr4/ppq2pp1/2b1pn2/2P4r/2P5/3BQN1P/P4PP1/R4RK1 b - - 0 1");
 
     std::cout << pos;
 
@@ -98,6 +99,7 @@ int main() {
         Koi::QuantT{},
     };
     parser.load_network(net);
+
 
     for (int i = 0; i < 50; i++)
     {

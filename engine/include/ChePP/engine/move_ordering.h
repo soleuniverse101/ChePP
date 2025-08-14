@@ -10,7 +10,7 @@
 #include "types.h"
 #include <vector>
 
-inline int score_move(const move_t& m, const position_t& pos, const move_t prev_best) {
+inline int score_move(const move_t& m, const position_t& pos, const move_t prev_best, const std::array<move_t, 2>& killers) {
     if (m == prev_best) {
         return 100'000;
     }
@@ -20,6 +20,12 @@ inline int score_move(const move_t& m, const position_t& pos, const move_t prev_
     const auto to_attackers = pos.attacking_sq_bb(m.to_sq()) & pos.color_occupancy(~pos.color());
 
     int score = 0;
+
+
+    if (m == killers.at(0) || m == killers.at(1))
+    {
+        score += 50'000;
+    }
 
     if (captured != NO_PIECE) {
         score += 10'000 + 10 * captured.value() - attacker.value();
@@ -77,12 +83,13 @@ inline int score_move(const move_t& m, const position_t& pos, const move_t prev_
     return score;
 }
 
-inline void order_moves(const position_t& pos, move_list_t& list, const move_t prev_best, enum_array<square_t, enum_array<square_t, int>>& history) {
+inline void order_moves(const position_t& pos, move_list_t& list, const move_t prev_best, enum_array<square_t, enum_array<square_t, int>>& history,
+                        const std::array<move_t, 2>& killers) {
     std::vector<std::pair<int, move_t>> scored;
     scored.reserve(list.size());
 
     for (const auto& m : list) {
-        scored.emplace_back(score_move(m, pos, prev_best) + history.at(m.from_sq()).at(m.to_sq()), m);
+        scored.emplace_back(score_move(m, pos, prev_best, killers) + history.at(m.from_sq()).at(m.to_sq()), m);
     }
 
     std::ranges::sort(scored, [](auto& a, auto& b) {

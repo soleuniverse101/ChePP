@@ -9,6 +9,7 @@
 
 #include <bits/shared_ptr_base.h>
 #include <optional>
+#include <vector>
 
 enum tt_bound_t : uint8_t {
     EXACT,
@@ -44,9 +45,11 @@ struct tt_t
 
     void init (const size_t mb)
     {
-        m_size = floor_power_of_two(mb * 1024 * 1024);
-        m_generation = 0;
-        m_table = std::make_unique<tt_entry_t[]>(m_size);
+        m_size = floor_power_of_two(mb * 1024 * 1024 / sizeof(tt_entry_t));
+        std::cout << m_size << std::endl;
+        m_table.resize(m_size);
+        std::ranges::fill(m_table, tt_entry_t());
+        new_generation();
     }
 
     [[nodiscard]] std::optional<tt_entry_t> probe(const hash_t hash, const int depth, const int alpha, const int beta) const
@@ -83,7 +86,10 @@ struct tt_t
             bound = EXACT;
         }
         const auto  entry = tt_entry_t(hash, depth, score, bound, m_generation);
-        if (cur.m_generation != m_generation || (cur.m_hash != hash && cur.m_depth < depth)) {
+        bool replace = cur.m_depth <= depth || cur.m_generation != m_generation;
+        if (!replace) return;
+        if (cur.m_bound == EXACT || cur.m_hash != hash || depth + 4 > cur.m_depth) {
+            //if (cur.m_bound == EXACT) return;
             m_table[index(hash)] = entry;
         }
     }
@@ -101,7 +107,7 @@ private:
 
     int m_generation = 0;
     std::size_t m_size = 0;
-    std::unique_ptr<tt_entry_t[]> m_table;
+    std::vector<tt_entry_t> m_table;
 };
 
 extern tt_t g_tt;
