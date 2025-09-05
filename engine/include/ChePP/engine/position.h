@@ -4,115 +4,192 @@
 #include "types.h"
 #include "zobrist.h"
 
+#include <bit>
+#include <cmath>
+#include <cstring>
 #include <memory>
 #include <ostream>
-#include <span>
 #include <src/tbprobe.h>
 #include <sstream>
 #include <utility>
 
-class position_t
+struct PieceList
 {
-    class state_t
+    using BucketT                             = uint64_t;
+    static constexpr int     bits_per_bucket  = 64;
+    static constexpr int     bits_per_piece   = std::bit_width(Piece::COUNT_V - 1);
+    static constexpr BucketT mask             = (static_cast<BucketT>(1) << bits_per_piece) - 1;
+    static constexpr int     pieces_per_buket = bits_per_bucket / bits_per_piece;
+    static constexpr int     nb_buckets       = 64 / pieces_per_buket;
+
+    static constexpr BucketT none = []()
+    {
+        BucketT result = 0;
+        for (int i = 0; i < pieces_per_buket; i++)
+        {
+            result |= NO_PIECE.index() << (i * bits_per_piece);
+        }
+        return result;
+    }();
+
+    using DataT = std::array<BucketT, nb_buckets>;
+
+    static constexpr DataT init = []()
+    {
+        DataT ret{};
+        ret.fill(none);
+        return ret;
+    }();
+
+    DataT data = init;
+
+    static_assert(none == 0xCCCCCCCCCCCCCCCC && mask == 0b1111);
+
+    constexpr void put(const Piece piece, const Square sq)
+    {
+        const size_t bucket_idx = sq.index() / pieces_per_buket;
+        const size_t idx        = sq.index() % pieces_per_buket;
+        const size_t shift      = idx * bits_per_piece;
+        data[bucket_idx] &= ~(mask << shift);
+        data[bucket_idx] |= piece.index() << shift;
+    }
+
+    [[nodiscard]] constexpr Piece piece_at(const Square sq) const
+    {
+        const size_t bucket_idx = sq.index() / pieces_per_buket;
+        const size_t idx        = sq.index() % pieces_per_buket;
+        const size_t shift      = idx * bits_per_piece;
+        return Piece{(data[bucket_idx] >> shift) & mask};
+    }
+};
+
+class Position
+{
+    // we store additional info like piece list to enable lazy evaluation of NNUE later on
+    // try to keep it under 192 bytes thought
+    class alignas(64) state_t
     {
       public:
-        state_t()
-            : m_ep_square(NO_SQUARE), m_crs(castling_rights_t{0}), m_hash(zobrist_t{0}), m_taken(NO_PIECE),
-              m_halfmove_clock(0)
+        static void init_from_prev(const state_t& prev, state_t& init)
         {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+            std::memcpy(&init, &prev, offsetof(state_t, m_color));
+#pragma GCC diagnostic pop
+
+            init.m_color          = ~prev.m_color;
+            init.m_halfmove_clock = prev.m_halfmove_clock + 1;
+            init.m_fullmove_clock = prev.m_fullmove_clock + (init.m_color == BLACK);
+            init.m_ep_square      = NO_SQUARE;
+            init.m_taken          = NO_PIECE;
         }
 
-        static state_t from_prev(const state_t& prev)
-        {
-            state_t res;
-            res.m_crs = prev.m_crs;
-            res.m_hash = prev.m_hash;
-            res.m_halfmove_clock = prev.m_halfmove_clock;
-            res.m_ep_square = NO_SQUARE;
-            res.m_taken = NO_PIECE;
-            return res;
-        }
+        [[nodiscard]] Square ep_square() const { return m_ep_square; }
+        [[nodiscard]] Piece  taken() const { return m_taken; }
 
-        [[nodiscard]] square_t ep_square() const { return m_ep_square; }
-        [[nodiscard]] piece_t  taken() const { return m_taken; }
+        [[nodiscard]] EnumArray<Color, Bitboard> blockers() const { return m_blockers; }
+        [[nodiscard]] EnumArray<Color, Bitboard> check_mask() const { return m_check_mask; }
+        [[nodiscard]] CastlingRights             crs() const { return m_crs; }
+        [[nodiscard]] zobrist_t                  hash() const { return m_hash; }
+        [[nodiscard]] int                        halfmove_clock() const { return m_halfmove_clock; }
+        [[nodiscard]] Square           ksq(const Color c) const { return m_ksq.at(c); }
+        [[nodiscard]] int              full_move() const { return m_fullmove_clock; }
+        [[nodiscard]] Color            color() const { return m_color; }
+        [[nodiscard]] Bitboard         pieces_occupancy(Color c, PieceType p) const;
+        [[nodiscard]] Bitboard         color_occupancy(const Color c) const { return m_color_occupancy.at(c); };
+        [[nodiscard]] Bitboard         occupancy() const { return m_global_occupancy; }
+        [[nodiscard]] Piece     piece_at(const Square sq) const { return m_pieces.at(sq); }
 
-        [[nodiscard]] enum_array<color_t, bitboard_t> checkers() const { return m_checkers; }
-        [[nodiscard]] enum_array<color_t, bitboard_t> blockers() const { return m_blockers; }
-        [[nodiscard]] enum_array<color_t, bitboard_t> check_mask() const { return m_check_mask; }
-        [[nodiscard]] castling_rights_t               crs() const { return m_crs; }
-        [[nodiscard]] zobrist_t                       hash() const { return m_hash; }
-        [[nodiscard]] int                             halfmove_clock() const { return m_halfmove_clock; }
 
-        void crs_remove_rights(const castling_rights_t lost) { m_crs.remove(lost); }
+        void crs_remove_rights(const CastlingRights lost) { m_crs.remove(lost); }
 
       private:
-        square_t                        m_ep_square;
-        enum_array<color_t, bitboard_t> m_checkers{};
-        enum_array<color_t, bitboard_t> m_blockers{};
-        enum_array<color_t, bitboard_t> m_check_mask{};
-        castling_rights_t               m_crs;
-        zobrist_t                       m_hash;
-        piece_t                         m_taken;
-        int                             m_halfmove_clock;
+        // copied
+        zobrist_t                      m_hash{};
+        //PieceList                    m_pieces{};
+        EnumArray<Square, Piece>       m_pieces{};
+        EnumArray<Color, Bitboard>     m_color_occupancy{};
+        Bitboard                       m_global_occupancy{};
+        EnumArray<PieceType, Bitboard> m_pieces_type_occupancy{};
+        EnumArray<Color, Square>       m_ksq{};
+        CastlingRights                 m_crs{};
 
-        friend class position_t;
+
+        // switch
+        Color m_color{};
+
+        // increment
+        uint8_t m_halfmove_clock = 0;
+        uint8_t m_fullmove_clock = 1;
+
+        // reset
+        Square m_ep_square{};
+        Piece  m_taken{};
+
+        // recomputed
+        EnumArray<Color, Bitboard> m_blockers{};
+        EnumArray<Color, Bitboard> m_check_mask{};
+
+        // 8 extra if needed
+
+        friend class Position;
+        state_t() = default;
     };
 
-  public:
-    // board getters
-    [[nodiscard]] std::span<const piece_t> pieces() const { return m_pieces; }
-    [[nodiscard]] piece_t                  piece_at(const square_t sq) const { return m_pieces.at(sq); }
-    [[nodiscard]] piece_type_t             piece_type_at(const square_t sq) const { return piece_at(sq).type(); }
-    [[nodiscard]] color_t                  color_at(const square_t sq) const { return piece_at(sq).color(); }
-    [[nodiscard]] bool                     is_occupied(const square_t sq) const { return piece_at(sq) != NO_PIECE; }
-    template <class... Ts>
-    bitboard_t pieces_bb(color_t c, piece_type_t first, const Ts... rest) const;
-    template <class... Ts>
-    bitboard_t               pieces_bb(piece_type_t first, const Ts... rest) const;
-    [[nodiscard]] bitboard_t pieces_bb(color_t c, std::initializer_list<piece_type_t> types) const;
-    [[nodiscard]] bitboard_t pieces_bb(std::initializer_list<piece_type_t> types) const;
-    [[nodiscard]] square_t ksq(const color_t c) const { return square_t{m_pieces_occupancy.at(c).at(KING).get_lsb()}; }
-    [[nodiscard]] int      full_move() const { return m_fullmove; }
-    [[nodiscard]] int      ply() const { return m_ply; }
+    using PieceListT =  EnumArray<Square, Piece> ;
 
-    // state getters
-    [[nodiscard]] color_t           color() const { return m_color; }
-    [[nodiscard]] bitboard_t        pieces_occupancy(color_t c, piece_type_t p) const;
-    [[nodiscard]] bitboard_t        color_occupancy(color_t c) const;
-    [[nodiscard]] bitboard_t        occupancy() const { return m_global_occupancy; }
-    [[nodiscard]] const state_t&    state() const { return m_states.at(m_state_idx); }
-    [[nodiscard]] bitboard_t        checkers(const color_t c) const { return state().checkers().at(c); }
-    [[nodiscard]] bitboard_t        blockers(const color_t c) const { return state().blockers().at(c); }
-    [[nodiscard]] bitboard_t        check_mask(color_t c) const;
-    [[nodiscard]] square_t          ep_square() const { return state().ep_square(); }
-    [[nodiscard]] hash_t            hash() const { return state().hash().value(); }
-    [[nodiscard]] castling_rights_t crs() const { return state().crs(); }
-    [[nodiscard]] int               halfmove_clock() const { return state().halfmove_clock(); }
-    [[nodiscard]] piece_t           taken() const { return state().taken(); }
+
+  public:
+    [[nodiscard]] Piece     piece_at(const Square sq) const { return state().m_pieces.at(sq); }
+    [[nodiscard]] PieceType piece_type_at(const Square sq) const { return piece_at(sq).type(); }
+    [[nodiscard]] Color     color_at(const Square sq) const { return piece_at(sq).color(); }
+    [[nodiscard]] bool      is_occupied(const Square sq) const { return piece_at(sq) != NO_PIECE; }
+    template <class... Ts>
+    Bitboard pieces_bb(Color c, PieceType first, const Ts... rest) const;
+    template <class... Ts>
+    Bitboard                       pieces_bb(PieceType first, const Ts... rest) const;
+    [[nodiscard]] Bitboard         pieces_bb(Color c, std::initializer_list<PieceType> types) const;
+    [[nodiscard]] Bitboard         pieces_bb(std::initializer_list<PieceType> types) const;
+    [[nodiscard]] Bitboard         attacking_sq_bb(Square sq, Bitboard occ) const;
+    [[nodiscard]] bool             is_attacking_sq(Square sq, Color c) const;
+    [[nodiscard]] Square           ksq(const Color c) const { return state().m_ksq.at(c); }
+    [[nodiscard]] int              full_move() const { return state().m_fullmove_clock; }
+    [[nodiscard]] int              ply() const { return m_ply; }
+    [[nodiscard]] Color            color() const { return state().m_color; }
+    [[nodiscard]] Bitboard         pieces_occupancy(Color c, PieceType p) const;
+    [[nodiscard]] Bitboard         color_occupancy(Color c) const;
+    [[nodiscard]] Bitboard         occupancy() const { return state().m_global_occupancy; }
+    [[nodiscard]] const state_t&   state() const { return m_states.at(m_ply); }
+    [[nodiscard]] state_t&         state() { return m_states.at(m_ply); }
+    [[nodiscard]] const state_t&   state(const int ply) const { return m_states.at(ply); }
+    [[nodiscard]] Bitboard         checkers(const Color c) const { return state().check_mask().at(c) & color_occupancy(~c); }
+    [[nodiscard]] Bitboard         blockers(const Color c) const { return state().blockers().at(c); }
+    [[nodiscard]] Bitboard         check_mask(Color c) const;
+    [[nodiscard]] Square           ep_square() const { return state().ep_square(); }
+    [[nodiscard]] hash_t           hash() const { return state().hash().value(); }
+    [[nodiscard]] CastlingRights   crs() const { return state().crs(); }
+    [[nodiscard]] int              halfmove_clock() const { return state().halfmove_clock(); }
+    [[nodiscard]] Piece            taken() const { return state().taken(); }
+    [[nodiscard]] const PieceListT& pieces() const { return state().m_pieces; }
+    [[nodiscard]] PieceListT&       pieces() { return state().m_pieces; }
 
     // utilities
-    [[nodiscard]] bitboard_t attacking_sq_bb(square_t sq) const;
-    template <color_t c>
-    [[nodiscard]] bool is_legal(move_t move) const;
+    [[nodiscard]] Bitboard attacking_sq_bb(Square sq) const;
+    template <Color c>
+    [[nodiscard]] bool is_legal(Move move) const;
 
-    template <piece_type_t pt>
-    void               update_checkers(color_t c);
-    void               update_checkers(color_t c);
-    [[nodiscard]] bool gives_check(move_t move) const;
+    template <PieceType pt>
+    void update_checkers_and_blockers(Color c);
+    void update_checkers_and_blockers(Color c);
+    void update_state();
 
-    void set_piece(piece_t piece, square_t sq);
-    void set_piece(piece_type_t piece_type, color_t color, square_t sq);
+    void set_piece(Piece piece, Square sq);
+    void set_piece(PieceType piece_type, Color color, Square sq);
+    void remove_piece(Square sq);
+    void move_piece(Square from, Square to);
 
-    void remove_piece(piece_type_t piece_type, color_t color, square_t sq);
-    void remove_piece(piece_t piece, square_t sq);
-
-    void move_piece(piece_type_t piece_type, color_t c, square_t from, square_t to);
-    void move_piece(piece_t piece, square_t from, square_t to);
-
-    void do_move(move_t move);
-    void do_null_move();
-    void undo_move(move_t move);
-    void undo_null_move();
+    void do_move(Move move);
+    void undo_move();
 
     void init_state();
     bool from_fen(std::string_view fen);
@@ -120,208 +197,209 @@ class position_t
     [[nodiscard]] bool     is_draw() const;
     [[nodiscard]] unsigned wdl_probe() const;
     [[nodiscard]] unsigned dtz_probe() const;
-    std::optional<move_t>  from_uci(const std::string_view& uci) const;
-
-    void push_state()
-    {
-        m_states.at(m_state_idx + 1) = state_t::from_prev(m_states.at(m_state_idx));
-        m_state_idx++;
-    }
-
-    void pop_state() { m_state_idx--; }
 
     [[nodiscard]] std::string to_string() const;
-    friend std::ostream&      operator<<(std::ostream& os, const position_t& pos) { return os << pos.to_string(); }
+    friend std::ostream&      operator<<(std::ostream& os, const Position& pos) { return os << pos.to_string(); }
+
+    [[nodiscard]] std::optional<Move> from_uci(const std::string_view& uci) const;
 
   private:
-    enum_array<square_t, piece_t>                             m_pieces{};
-    enum_array<color_t, enum_array<piece_type_t, bitboard_t>> m_pieces_occupancy{};
-    enum_array<color_t, bitboard_t>                           m_color_occupancy{};
-    bitboard_t                                                m_global_occupancy{};
-    color_t                                                   m_color{};
-    int                                                       m_ply      = 0;
-    int                                                       m_fullmove = 1;
+    void push_state()
+    {
+        state_t::init_from_prev(m_states.at(m_ply), m_states.at(m_ply + 1));
+        m_ply++;
+    }
 
-    int                      m_state_idx = 0;
-    std::array<state_t, 256> m_states;
+    void pop_state() { m_ply--; }
+
+    int                          m_ply = 0;
+    std::array<state_t, MAX_PLY> m_states{};
 };
 
 template <typename... Ts>
-[[nodiscard]] bitboard_t position_t::pieces_bb(const color_t c, const piece_type_t first, const Ts... rest) const
+Bitboard Position::pieces_bb(const PieceType first, const Ts... rest) const
 {
     if constexpr (sizeof...(rest) == 0)
     {
-        return m_pieces_occupancy.at(c).at(first);
+        return state().m_pieces_type_occupancy.at(first);
     }
     else
     {
-        return m_pieces_occupancy.at(c).at(first) | pieces_bb(c, rest...);
+        return state().m_pieces_type_occupancy.at(first) | pieces_bb(rest...);
     }
 }
+
 template <typename... Ts>
-bitboard_t position_t::pieces_bb(const piece_type_t first, const Ts... rest) const
+[[nodiscard]] Bitboard Position::pieces_bb(const Color c, const PieceType first, const Ts... rest) const
 {
-    return pieces_bb(WHITE, first, rest...) | pieces_bb(BLACK, first, rest...);
+    return pieces_bb(first, rest...) & color_occupancy(c);
 }
 
-inline bitboard_t position_t::pieces_bb(const color_t c, const std::initializer_list<piece_type_t> types) const
+inline Bitboard Position::pieces_bb(const std::initializer_list<PieceType> types) const
 {
-    bitboard_t result{0};
+    Bitboard result{0};
 
-    for (const piece_type_t pt : types)
-        result |= m_pieces_occupancy.at(c).at(pt);
+    for (const PieceType pt : types)
+        result |= state().m_pieces_type_occupancy.at(pt);
 
     return result;
 }
 
-inline bitboard_t position_t::pieces_bb(const std::initializer_list<piece_type_t> types) const
+inline Bitboard Position::pieces_bb(const Color c, const std::initializer_list<PieceType> types) const
 {
-    bitboard_t result{0};
-
-    for (const piece_type_t pt : types)
-        result |= pieces_bb(WHITE, {pt}) | pieces_bb(BLACK, {pt});
-
-    return result;
+    return pieces_bb(types) & color_occupancy(c);
 }
 
-inline bitboard_t position_t::attacking_sq_bb(const square_t sq) const
+inline Bitboard Position::attacking_sq_bb(const Square sq, const Bitboard occ) const
 {
     // if a piece attacks a square sq2 from a square sq1 it would attack sq1 from sq2
     // exception made for pawns where this is true only with reversed colors
-    return (bb::attacks<ROOK>(sq, occupancy()) & pieces_bb(ROOK, QUEEN)) |
-           (bb::attacks<BISHOP>(sq, occupancy()) & pieces_bb(BISHOP, QUEEN)) |
-           (bb::attacks<KNIGHT>(sq, occupancy()) & pieces_bb(KNIGHT)) |
-           (bb::attacks<PAWN>(sq, occupancy(), BLACK) & pieces_bb(WHITE, PAWN)) |
-           (bb::attacks<PAWN>(sq, occupancy(), WHITE) & pieces_bb(BLACK, PAWN)) |
-           (bb::attacks<KING>(sq, occupancy()) & pieces_bb(KING));
+    return ((attacks<ROOK>(sq, occ) & pieces_bb(ROOK, QUEEN)) | (attacks<BISHOP>(sq, occ) & pieces_bb(BISHOP, QUEEN)) |
+            (attacks<KNIGHT>(sq, occ) & pieces_bb(KNIGHT)) | (attacks<PAWN>(sq, occ, BLACK) & pieces_bb(WHITE, PAWN)) |
+            (attacks<PAWN>(sq, occ, WHITE) & pieces_bb(BLACK, PAWN)) | (attacks<KING>(sq, occ) & pieces_bb(KING))) &
+           occ;
 }
 
-inline bitboard_t position_t::pieces_occupancy(const color_t c, const piece_type_t p) const
+inline Bitboard Position::attacking_sq_bb(const Square sq) const
 {
-    return m_pieces_occupancy.at(c).at(p);
+    return attacking_sq_bb(sq, occupancy());
 }
 
-inline bitboard_t position_t::color_occupancy(const color_t c) const
+inline bool Position::is_attacking_sq(const Square sq, const Color c) const
 {
-    return m_color_occupancy.at(c);
+    // if a piece attacks a square sq2 from a square sq1 it would attack sq1 from sq2
+    // exception made for pawns where this is true only with reversed colors
+    return attacks<KNIGHT>(sq, occupancy()) & pieces_bb(c, KNIGHT) ||
+           attacks<PAWN>(sq, occupancy(), ~c) & pieces_bb(c, PAWN) ||
+           attacks<KING>(sq, occupancy()) & pieces_bb(c, KING) ||
+           attacks<BISHOP>(sq, occupancy()) & pieces_bb(c, BISHOP, QUEEN) ||
+           attacks<ROOK>(sq, occupancy()) & pieces_bb(c, ROOK, QUEEN);
 }
 
-inline bitboard_t position_t::check_mask(const color_t c) const
+inline Bitboard Position::pieces_occupancy(const Color c, const PieceType p) const
+{
+    return state().m_pieces_type_occupancy.at(p) & state().m_color_occupancy.at(c);
+}
+
+inline Bitboard Position::color_occupancy(const Color c) const
+{
+    return state().m_color_occupancy.at(c);
+}
+
+inline Bitboard Position::check_mask(const Color c) const
 {
     return state().check_mask().at(c);
 }
 
-template <piece_type_t pt>
-void position_t::update_checkers(const color_t c)
+template <PieceType pt>
+void Position::update_checkers_and_blockers(const Color c)
 {
-    auto enemies = pieces_bb(~c, pt);
-    while (enemies)
-    {
-        const auto sq         = square_t{enemies.pops_lsb()};
-        const auto line       = bb::from_to_excl(sq, ksq(c)) & bb::attacks<pt>(sq);
-        const auto on_line    = line & occupancy();
-        const auto n_blockers = on_line.popcount();
-        if (n_blockers == 0)
+    static_assert(pt == BISHOP || pt == ROOK);
+    auto enemies = pieces_bb(~c, pt, QUEEN);
+    enemies.for_each_square(
+        [&](const Square sq)
         {
-            // check mask also contains all squares between the long range attacker and the king
-            m_states.at(m_state_idx).m_check_mask.at(c) |= line;
-        }
-        if (n_blockers == 1)
-        {
-            // blockers can be of any color
-            // blocker from same color are pinned from other color can do a discovered check
-            m_states.at(m_state_idx).m_blockers.at(c) |= on_line;
-        }
-    }
+            const auto line       = from_to_excl(sq, ksq(c)) & attacks<pt>(sq);
+            const auto on_line    = line & occupancy();
+            const auto n_blockers = on_line.popcount();
+            if (n_blockers == 0)
+            {
+                // check mask also contains all squares between the long range attacker and the king
+                m_states.at(m_ply).m_check_mask.at(c) |= line;
+            }
+            if (n_blockers == 1)
+            {
+                // blockers can be of any color
+                // blocker from same color are pinned from other color can do a discovered check
+                m_states.at(m_ply).m_blockers.at(c) |= on_line;
+            }
+        });
 }
 
-inline void position_t::update_checkers(const color_t c)
+inline void Position::update_checkers_and_blockers(const Color c)
 {
-    const auto ksq = static_cast<square_t>(pieces_bb(c, KING).get_lsb());
+    m_states.at(m_ply).m_blockers.at(c)   = bb::empty();
+    m_states.at(m_ply).m_check_mask.at(c) = attacking_sq_bb(ksq(c)) & color_occupancy(~c);
 
-    m_states.at(m_state_idx).m_blockers.at(c)   = bb::empty();
-    m_states.at(m_state_idx).m_check_mask.at(c) = m_states.at(m_state_idx).m_checkers.at(c) =
-        attacking_sq_bb(ksq) & color_occupancy(~c);
-
-    update_checkers<BISHOP>(c);
-    update_checkers<ROOK>(c);
-    update_checkers<QUEEN>(c);
+    update_checkers_and_blockers<BISHOP>(c);
+    update_checkers_and_blockers<ROOK>(c);
 }
 
-inline bool position_t::gives_check(const move_t move) const
+inline void Position::update_state()
 {
-    assert(piece_at(move.from_sq()).color() == color());
-    return (bb::attacks(piece_type_at(move.from_sq()), move.to_sq()) & bb::square(ksq(~color()))) != bb::empty();
+    state().m_global_occupancy =
+        m_states.at(m_ply).m_color_occupancy.at(WHITE) | m_states.at(m_ply).m_color_occupancy.at(BLACK);
+    state().m_ksq = {Square{pieces_bb(WHITE, KING).get_lsb()}, Square{pieces_bb(BLACK, KING).get_lsb()}};
+
+    update_checkers_and_blockers(color());
+    update_checkers_and_blockers(~color());
 }
 
-inline void position_t::set_piece(const piece_t piece, const square_t sq)
+inline void Position::set_piece(const Piece piece, const Square sq)
 {
     assert(!is_occupied(sq));
-    const piece_type_t pt = piece.type();
-    const color_t      c  = piece.color();
-    m_global_occupancy |= m_color_occupancy.at(c) |= m_pieces_occupancy.at(c).at(pt) |= bb::square(sq);
-    m_pieces.at(sq) = piece;
+    const PieceType pt = piece.type();
+    const Color     c  = piece.color();
+    state().m_pieces_type_occupancy.at(pt) |= Bitboard(sq);
+    state().m_color_occupancy.at(c) |= Bitboard(sq);
+    pieces().at(sq) = piece;
 }
 
-inline void position_t::set_piece(const piece_type_t piece_type, const color_t color, const square_t sq)
+inline void Position::set_piece(const PieceType piece_type, const Color color, const Square sq)
 {
     assert(!is_occupied(sq));
-    m_global_occupancy |= m_color_occupancy.at(color) |= m_pieces_occupancy.at(color).at(piece_type) |= bb::square(sq);
-    m_pieces.at(sq) = piece_t{color, piece_type};
+
+    state().m_pieces_type_occupancy.at(piece_type) |= Bitboard(sq);
+    state().m_color_occupancy.at(color) |= Bitboard(sq);
+    pieces().at(sq) = Piece{color, piece_type};
 }
 
-inline void position_t::remove_piece(const piece_type_t piece_type, const color_t color, const square_t sq)
+inline void Position::remove_piece(const Square sq)
 {
-    const piece_t pc{color, piece_type};
-    assert(piece_at(sq) == pc);
-    m_pieces_occupancy.at(color).at(piece_type) &= m_color_occupancy.at(color) &= m_global_occupancy &= ~bb::square(sq);
-    m_pieces.at(sq) = NO_PIECE;
+    const Piece pc = piece_at(sq);
+    state().m_pieces_type_occupancy.at(pc.type()) &= ~Bitboard(sq);
+    state().m_color_occupancy.at(pc.color()) &= ~Bitboard(sq);
+    pieces().at(sq) = NO_PIECE;
 }
 
-inline void position_t::remove_piece(const piece_t piece, const square_t sq)
+inline void Position::move_piece(const Square from, const Square to)
 {
-    const piece_type_t pt = piece.type();
-    const color_t      c  = piece.color();
-    assert(piece_at(sq) == piece);
-    m_pieces_occupancy.at(c).at(pt) &= m_color_occupancy.at(c) &= m_global_occupancy &= ~bb::square(sq);
-    m_pieces.at(sq) = NO_PIECE;
-}
-
-inline void position_t::move_piece(const piece_type_t piece_type, const color_t c, const square_t from,
-                                   const square_t to)
-{
-    remove_piece(piece_type, c, from);
-    set_piece(piece_type, c, to);
-}
-
-inline void position_t::move_piece(const piece_t piece, const square_t from, const square_t to)
-{
-    remove_piece(piece, from);
+    const Piece piece = piece_at(from);
+    remove_piece(from);
     set_piece(piece, to);
 }
 
-inline void position_t::init_state()
+inline void Position::init_state()
 {
-    m_states.at(m_state_idx).m_hash = zobrist_t(*this);
+    state().m_hash = zobrist_t{};
+    for (auto sq = A1; sq <= H8; sq = ++sq)
+    {
+        if (piece_at(sq) != NO_PIECE)
+            state().m_hash.flip_piece(piece_at(sq), sq);
+    }
 
-    update_checkers(WHITE);
-    update_checkers(BLACK);
+    if (ep_square() != NO_SQUARE)
+        state().m_hash.flip_ep(ep_square().file());
+
+    if (color() == BLACK)
+        state().m_hash.flip_color();
+
+    state().m_hash.flip_castling_rights(crs().mask());
+
+    update_state();
 }
 
-inline bool position_t::from_fen(const std::string_view fen)
+inline bool Position::from_fen(const std::string_view fen)
 {
-    m_pieces.fill(NO_PIECE);
-    m_color_occupancy.fill(bb::empty());
-    m_global_occupancy = bb::empty();
-    m_pieces_occupancy.fill(enum_array<piece_type_t, bitboard_t>{});
-    m_states.at(0) = state_t();
+    m_ply              = 0;
+    m_states.at(m_ply) = state_t();
 
     std::istringstream iss{std::string(fen)};
     std::string        board_str, color_str, castling_str, ep_str, halfmove_str, fullmove_str;
     iss >> board_str >> color_str >> castling_str >> ep_str >> halfmove_str >> fullmove_str;
 
-    file_t file = FILE_A;
-    rank_t rank = RANK_8;
+    File file = FILE_A;
+    Rank rank = RANK_8;
 
     for (const auto c : board_str)
     {
@@ -339,39 +417,38 @@ inline bool position_t::from_fen(const std::string_view fen)
         }
         else
         {
-            const auto pc = from_char<piece_t>(c);
+            const auto pc = Piece::from_string(std::string{c});
             if (!pc)
                 return false;
-            set_piece(pc.value(), square_t{file, rank});
+            set_piece(pc.value(), Square{file, rank});
 
             if (file != FILE_H)
                 ++file;
         }
     }
 
-    const auto color = from_string<color_t>(color_str);
+    const auto color = Color::from_string(color_str);
     if (!color)
         return false;
-    m_color = color.value();
+    state().m_color = color.value();
 
+    const auto crs = CastlingRights::from_string(castling_str);
+    if (!crs)
+        return false;
+    m_states.at(m_ply).m_crs = crs.value();
 
-    const auto crs                    = from_string<castling_rights_t>(castling_str);
-    if (!crs) return false;
-    m_states.at(m_state_idx).m_crs = crs.value();
-
-
-    const auto ep_square = from_string<square_t>(ep_str);
+    const auto ep_square = Square::from_string(ep_str);
     if (!ep_square)
         return false;
-    m_states.at(m_state_idx).m_ep_square = ep_square.value();
+    m_states.at(m_ply).m_ep_square = ep_square.value();
 
     if (halfmove_str.size() > 3 || fullmove_str.size() > 3)
         return false;
 
     try
     {
-        m_states.at(m_state_idx).m_halfmove_clock = stoi(halfmove_str);
-        m_fullmove                                = stoi(fullmove_str);
+        m_states.at(m_ply).m_halfmove_clock = stoi(halfmove_str);
+        m_states.at(m_ply).m_fullmove_clock = stoi(fullmove_str);
     }
     catch (const std::invalid_argument& _)
     {
@@ -386,13 +463,13 @@ inline bool position_t::from_fen(const std::string_view fen)
     return true;
 }
 
-inline std::string position_t::to_string() const
+inline std::string Position::to_string() const
 {
     std::ostringstream res{};
 
     res << "Position:\n";
     res << "Side to move: " << color() << "\n";
-    res << "Castling rights: " << m_states.at(m_state_idx).m_crs << "\n";
+    res << "Castling rights: " << m_states.at(m_ply).m_crs << "\n";
 
     res << "En passant square: " << ep_square() << "\n";
 
@@ -400,11 +477,11 @@ inline std::string position_t::to_string() const
 
     for (auto rank = RANK_1; rank <= RANK_8; ++rank)
     {
-        res << index(RANK_8 - rank) + 1 << " ";
+        res << (RANK_8 - rank).index() + 1 << " ";
         for (auto file = FILE_A; file <= FILE_H; ++file)
         {
-            const square_t sq{file, RANK_8 - rank};
-            const piece_t  pc = piece_at(sq);
+            const Square sq{file, RANK_8 - rank};
+            const Piece  pc = piece_at(sq);
             res << pc << " ";
         }
         res << "\n";
@@ -414,126 +491,115 @@ inline std::string position_t::to_string() const
     return res.str();
 }
 
-template <color_t c>
-bool position_t::is_legal(const move_t move) const
+template <Color c>
+bool Position::is_legal(const Move move) const
 {
-    constexpr direction_t down    = c == WHITE ? SOUTH : NORTH;
-    const bitboard_t      from_bb = bb::square(move.from_sq());
-    const bitboard_t      to_bb   = bb::square(move.to_sq());
+    constexpr Direction down    = c == WHITE ? SOUTH : NORTH;
+    const auto          from_bb = Bitboard(move.from_sq());
+    const auto          to_bb   = Bitboard(move.to_sq());
 
-    if (piece_type_at(move.from_sq()) == KING)
+    if (ksq(c) == move.from_sq())
     {
-        bitboard_t long_range = checkers(c) & pieces_bb(~c, ROOK, BISHOP, QUEEN);
+        // cannot move along the ray of a long range piece
+        Bitboard long_range = checkers(c) & pieces_bb(~c, ROOK, BISHOP, QUEEN);
         while (long_range)
         {
-            if (const auto sq = static_cast<square_t>(long_range.pops_lsb());
-                bb::are_aligned(sq, move.from_sq(), move.to_sq()) && move.to_sq() != sq)
+            if (const auto sq = Square{long_range.pop_lsb()};
+                are_aligned(sq, move.from_sq(), move.to_sq()) && move.to_sq() != sq)
             {
                 return false;
             }
         }
-        if ((attacking_sq_bb(move.to_sq()) & color_occupancy(~c)) != bb::empty())
+        // cannot move to a square that is attacked
+        if (is_attacking_sq(move.to_sq(), ~c))
         {
             return false;
         }
     }
-    if (move.type_of() == NORMAL || move.type_of() == PROMOTION)
+    else if (move.type_of() == NORMAL || move.type_of() == PROMOTION)
     {
         // check for pins
-        if ((bb::square(move.from_sq()) & blockers(c)) != bb::empty())
+        // if the piece is a blocker
+        if (Bitboard(move.from_sq()) & blockers(c))
         {
-            if ((bb::square(move.to_sq()) & bb::line(move.from_sq(), ksq(c))) == bb::empty())
+            // and if it is not moving along the line it is pinned to
+            if (!(Bitboard(move.to_sq()) & line(move.from_sq(), ksq(c))))
             {
+                // we are breaking the pin, move is illegal
                 return false;
             }
         }
     }
-    if (move.type_of() == EN_PASSANT)
+    else if (move.type_of() == EN_PASSANT)
     {
-
         // en passant can create discovered checks so we check for any long range attack
         // we know they have not moved. therefore we only need to update global occupancy to cast rays
         // we check if rays intersect with any long range and if they do that means a there is a check
-        bitboard_t ep_occupancy = occupancy();
-        ep_occupancy &= ~from_bb;
-        ep_occupancy |= to_bb;
-        ep_occupancy &= ~bb::shift<down>(to_bb);
-        for (const auto piece_type : {BISHOP, ROOK, QUEEN})
-        {
-            if (pieces_occupancy(~c, piece_type) & bb::attacks(piece_type, ksq(c), ep_occupancy))
-            {
-                return false;
-            }
-        }
+        if (const Bitboard ep_occupancy = (occupancy() & ~from_bb | to_bb) & ~shift<down>(to_bb);
+            pieces_bb(~c, BISHOP, QUEEN) & attacks(BISHOP, ksq(c), ep_occupancy) ||
+            pieces_bb(~c, ROOK, QUEEN) & attacks(ROOK, ksq(c), ep_occupancy))
+            return false;
     }
     return true;
 }
 
-inline void position_t::do_move(const move_t move)
+inline void Position::do_move(const Move move)
 {
-    if (move == move_t::null())
-    {
-        do_null_move();
-        return;
-    }
     push_state();
 
-    state_t& state = m_states.at(m_state_idx);
+    state().m_hash.flip_color();
 
-    if (const square_t prev_ep = m_states.at(m_state_idx - 1).ep_square(); prev_ep != NO_SQUARE)
+    if (const Square prev_ep = m_states.at(m_ply - 1).ep_square(); prev_ep != NO_SQUARE)
     {
-        state.m_hash.flip_ep(prev_ep.file());
+        state().m_hash.flip_ep(prev_ep.file());
     }
 
-    const square_t from = move.from_sq();
-    const square_t to   = move.to_sq();
-    piece_type_t   pt   = piece_type_at(from);
-    const color_t  us   = color();
+    if (move == Move::null())
+    {
+        update_state();
+        return;
+    }
 
-    m_color = ~m_color;
-    state.m_hash.flip_color();
+    state_t& state = m_states.at(m_ply);
 
-    state.m_halfmove_clock++;
-    if (us == BLACK)
-        m_fullmove++;
-    m_ply++;
+    const Square from = move.from_sq();
+    const Square to   = move.to_sq();
+    Piece        pc   = piece_at(from);
+    const Color  us   = pc.color();
 
-    const direction_t up = us == WHITE ? NORTH : SOUTH;
+    assert(us == ~color());
 
-    const move_type_t move_type = move.type_of();
+    const Direction up = us == WHITE ? NORTH : SOUTH;
 
     const auto lost = state.m_crs.lost_from_move(move);
+    state.m_crs.remove(lost);
+    state.m_hash.flip_castling_rights(lost.mask());
 
-    if (lost != CASTLING_NONE)
-    {
-        state.m_crs.remove(lost);
-        state.m_hash.flip_castling_rights(lost.mask());
-    }
-    if (move_type == CASTLING)
+    if (move.type_of() == CASTLING)
     {
         const auto castling_type = move.castling_type();
-        assert(castling_rights_t{lost}.has(castling_type));
+        assert(CastlingRights{lost}.has(castling_type));
         auto [k_from, k_to] = castling_type.king_move();
         auto [r_from, r_to] = castling_type.rook_move();
 
-        remove_piece(ROOK, us, r_from);
-        move_piece(KING, us, k_from, k_to);
-        set_piece(ROOK, us, r_to);
+        move_piece(r_from, r_to);
+        move_piece(k_from, k_to);
 
-        state.m_hash.move_piece(piece_t{us, KING}, k_from, k_to);
-        state.m_hash.move_piece(piece_t{us, ROOK}, r_from, r_to);
+        state.m_hash.move_piece(Piece{us, KING}, k_from, k_to);
+        state.m_hash.move_piece(Piece{us, ROOK}, r_from, r_to);
 
-        update_checkers(~us);
+        update_state();
         return;
     }
 
-    if (pt == PAWN || is_occupied(to) || move_type == EN_PASSANT)
+    if (pc.type() == PAWN || is_occupied(to))
     {
         state.m_halfmove_clock = 0;
     }
 
-    if (move_type == NORMAL || move_type == PROMOTION)
+    if (move.type_of() == NORMAL || move.type_of() == PROMOTION)
     {
+
         // capture
         if (is_occupied(to))
         {
@@ -541,142 +607,44 @@ inline void position_t::do_move(const move_t move)
 
             state.m_taken = piece_at(to);
             state.m_hash.flip_piece(piece_at(to), to);
-            remove_piece(piece_at(to), to);
+            remove_piece(to);
         }
         // set new ep square
-        else if (pt == PAWN && index(to) - index(from) == value_of(2 * up))
+        else if (pc.type() == PAWN && to.value() - from.value() == 2 * up)
         {
-            if (((bb::pseudo_attack<PAWN>(to - up, us)) & color_occupancy(~us)) != bb::empty())
+            // only set if ep is actually playable
+            if (((pseudo_attack<PAWN>(to - up, us)) & color_occupancy(~us)) != bb::empty())
             {
                 state.m_ep_square = from + up;
                 state.m_hash.flip_ep(from.file());
             }
         }
     }
-    if (move_type == EN_PASSANT)
+    if (move.type_of() == EN_PASSANT)
     {
         const auto to_ep = to - up;
-        state.m_hash.flip_piece(piece_t{~us, PAWN}, to_ep);
-        remove_piece(PAWN, ~us, to_ep);
+        state.m_hash.flip_piece(Piece{~us, PAWN}, to_ep);
+        remove_piece(to_ep);
     }
-    if (move_type == PROMOTION)
+    if (move.type_of() == PROMOTION)
     {
-        remove_piece(PAWN, us, from);
+        remove_piece(from);
         set_piece(move.promotion_type(), us, from);
-        pt = move.promotion_type();
-        state.m_hash.promote_piece(us, pt, from);
+        pc = Piece{us, move.promotion_type()};
+        state.m_hash.promote_piece(us, pc.type(), from);
     }
-    move_piece(pt, us, from, to);
-    state.m_hash.move_piece(piece_t{us, pt}, from, to);
-    update_checkers(~us);
+    move_piece(from, to);
+    state.m_hash.move_piece(pc, from, to);
+
+    update_state();
 }
 
-inline void position_t::do_null_move()
-{
-    push_state();
-
-    state_t& state = m_states.at(m_state_idx);
-
-    const color_t us = color();
-
-    if (const square_t prev_ep = m_states.at(m_state_idx - 1).ep_square(); prev_ep != NO_SQUARE)
-    {
-        state.m_hash.flip_ep(prev_ep.file());
-    }
-
-    state.m_ep_square = NO_SQUARE;
-
-    m_color = ~m_color;
-    state.m_hash.flip_color();
-
-    state.m_halfmove_clock++;
-    if (us == BLACK)
-        m_fullmove++;
-
-    m_ply++;
-
-    update_checkers(~us);
-}
-
-inline void position_t::undo_move(const move_t move)
-{
-
-    if (move == move_t::null())
-    {
-        undo_null_move();
-        return;
-    }
-
-    const piece_t taken = state().m_taken;
-    pop_state();
-
-    m_color = ~m_color;
-
-    const square_t     from      = move.from_sq();
-    const square_t     to        = move.to_sq();
-    const piece_type_t pt        = piece_type_at(to);
-    const color_t      us        = color();
-    const direction_t  up        = us == WHITE ? NORTH : SOUTH;
-    const move_type_t  move_type = move.type_of();
-
-    m_ply--;
-    if (us == BLACK)
-        m_fullmove--;
-
-    if (move_type == CASTLING)
-    {
-        const auto castling_type = move.castling_type();
-        auto [k_from, k_to]      = castling_type.king_move();
-        auto [r_from, r_to]      = castling_type.rook_move();
-
-        remove_piece(ROOK, us, r_to);
-        move_piece(KING, us, k_to, k_from);
-        set_piece(ROOK, us, r_from);
-
-        return;
-    }
-
-    move_piece(pt, us, to, from);
-
-    if (move_type == PROMOTION)
-    {
-        if (taken != NO_PIECE)
-        {
-            assert(taken.color() == ~us);
-            set_piece(taken, to);
-        }
-        remove_piece(move.promotion_type(), us, from);
-        set_piece(PAWN, us, from);
-    }
-    if (move_type == EN_PASSANT)
-    {
-        // remove two up right / left
-        set_piece(PAWN, ~us, to - up);
-    }
-    if (move_type == NORMAL)
-    {
-        // capture
-        if (taken != NO_PIECE)
-        {
-            assert(taken.color() == ~us);
-            set_piece(taken, to);
-        }
-    }
-}
-
-inline void position_t::undo_null_move()
+inline void Position::undo_move()
 {
     pop_state();
-    m_color = ~m_color;
-
-    m_ply--;
-    if (m_color == BLACK)
-        m_fullmove--;
-
-    update_checkers(~m_color);
 }
 
-inline bool position_t::is_draw() const
+inline bool Position::is_draw() const
 {
     if (halfmove_clock() >= 100)
     {
@@ -684,7 +652,7 @@ inline bool position_t::is_draw() const
     }
     const hash_t target = hash();
     int          hits   = 1;
-    size_t       idx    = m_state_idx;
+    size_t       idx    = m_ply;
     while (idx > 0)
     {
         const state_t& state = m_states.at(--idx);
@@ -704,47 +672,48 @@ inline bool position_t::is_draw() const
     return false;
 }
 
-inline unsigned position_t::wdl_probe() const
+inline unsigned Position::wdl_probe() const
 {
-    int ep_sq = ep_square() == NO_SQUARE ? 0 : value_of(ep_square()) + 1;
+    size_t ep_sq = ep_square() == NO_SQUARE ? 0 : ep_square().index() + 1;
     return tb_probe_wdl(color_occupancy(WHITE).value(), color_occupancy(BLACK).value(), pieces_bb(KING).value(),
                         pieces_bb(QUEEN).value(), pieces_bb(ROOK).value(), pieces_bb(BISHOP).value(),
                         pieces_bb(KNIGHT).value(), pieces_bb(PAWN).value(), static_cast<unsigned>(halfmove_clock()),
                         crs().mask(), ep_sq, color() == WHITE);
 }
 
-inline unsigned position_t::dtz_probe() const
+inline unsigned Position::dtz_probe() const
 {
-    int ep_sq = ep_square() == NO_SQUARE ? 0 : value_of(ep_square()) + 1;
+    size_t ep_sq = ep_square() == NO_SQUARE ? 0 : ep_square().index() + 1;
     return tb_probe_root(color_occupancy(WHITE).value(), color_occupancy(BLACK).value(), pieces_bb(KING).value(),
                          pieces_bb(QUEEN).value(), pieces_bb(ROOK).value(), pieces_bb(BISHOP).value(),
                          pieces_bb(KNIGHT).value(), pieces_bb(PAWN).value(), static_cast<unsigned>(halfmove_clock()),
                          crs().mask(), ep_sq, color() == WHITE, nullptr);
 }
 
-inline std::optional<move_t> position_t::from_uci(const std::string_view& uci) const
+inline std::optional<Move> Position::from_uci(const std::string_view& uci) const
 {
-    const auto incomplete = move_t::from_uci(uci);
-    if (!incomplete) return std::nullopt;
+    const auto incomplete = Move::from_uci(uci);
+    if (!incomplete)
+        return std::nullopt;
     if (piece_type_at(incomplete->from_sq()) == PAWN && ep_square() == incomplete->to_sq())
     {
-        return move_t::make<EN_PASSANT>(incomplete->from_sq(), incomplete->to_sq());
+        return Move::make<EN_PASSANT>(incomplete->from_sq(), incomplete->to_sq());
     }
     if (piece_type_at(incomplete->from_sq()) == KING)
     {
-        for (const auto type : values<castling_type_t>)
+        CastlingRights copy = crs();
+        while (!copy.empty())
         {
-            if (!crs().has(type)) continue;
+            auto type = CastlingType{bit::get_lsb(copy.mask())};
             if (const auto [k_from, k_to] = type.king_move();
                 incomplete->from_sq() == k_from && incomplete->to_sq() == k_to)
             {
-                return move_t::make<CASTLING>(k_from, k_to, type);
+                return Move::make<CASTLING>(k_from, k_to, type);
             }
+            copy.remove(type);
         }
     }
     return incomplete;
-
 }
-
 
 #endif

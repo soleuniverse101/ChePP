@@ -14,7 +14,6 @@ struct perft_test_case_t
 
 TEST(EngineTest, PerftCases)
 {
-    bb::init();
     const std::vector<perft_test_case_t> test_cases =
         {{"InitialPosition",
           "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -40,8 +39,9 @@ TEST(EngineTest, PerftCases)
 
     for (const auto& test_case : test_cases)
     {
-        position_t pos;
+        Position pos;
         pos.from_fen(test_case.fen);
+        std::cout << pos;
         for (size_t d = 1; d < test_case.expected_perfts.size(); ++d)
         {
             size_t out = 0;

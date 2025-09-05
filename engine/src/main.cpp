@@ -1,22 +1,22 @@
-#include "ChePP/engine/bitboard.h"
-#include "ChePP/engine/movegen.h"
-#include "ChePP/engine/position.h"
-#include "ChePP/engine/search.h"
-#include "ChePP/engine/tt.h"
-#include "ChePP/engine/tb.h"
-#include "ChePP/engine/nnue.h"
-#include "ChePP/engine/zobrist.h"
 
+#include "ChePP/engine/bitboard.h"
+#include "ChePP/engine/types.h"
+#include "ChePP/engine/position.h"
+#include "ChePP/engine/movegen.h"
+#include "ChePP/engine/search.h"
 #include <chrono>
 #include <iostream>
 #include <random>
 
 #include <iostream>
 
+#include "ChePP/engine/types.h"
+#include "ChePP/engine/nnue.h"
 
 
-void perft_divide(position_t& pos, int depth) {
-    move_list_t l;
+
+void perft_divide(Position& pos, int depth) {
+    MoveList l;
     if (pos.color() == WHITE)
         gen_legal<WHITE>(pos, l);
     else
@@ -24,21 +24,24 @@ void perft_divide(position_t& pos, int depth) {
 
     size_t total = 0;
 
-    for (size_t i = 0; i < l.size(); ++i) {
-        const auto mv = l[i];
+
+    for (auto mv : l)
+    {
         pos.do_move(mv);
 
         size_t nodes = 0;
         perft(pos, depth - 1, nodes);
 
-        pos.undo_move(mv);
+        pos.undo_move();
 
         std::cout << pos.piece_at(mv.from_sq()) << " " << mv.from_sq() << " " << mv.to_sq() << ": " << nodes << '\n';
         total += nodes;
     }
 
+
     std::cout << "Total: " << total << '\n';
 }
+
 
 /**
 void init_random_weights(layer_t<int16_t, feature_t::n_features, nnue_t::s_accumulator_size>& layer, int16_t seed = 1) {
@@ -64,45 +67,39 @@ void print_accumulator(accumulator_t<nnue_t::s_accumulator_size>& acc, color_t c
     }
     std::cout << "\n";
 }
-**/
+*
+*
+ */
+
 
 int main() {
-    bb::init();
-    zobrist_t::init(0xFADA);
+    Position pos;
+
+    pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
+    //pos.from_fen("rnbqkbnr/pppppppp/8/8/8/4P3/PPPP1PPP/RNBQKBNR b - - 1 1");
+
+
+    Eval::NNUE<512> nnue;
+    nnue.init(pos);
+
     g_tt.init(512);
-    tb_init("/home/paul/code/ChePP/scripts/syzyy");
+    //tb_init("/home/paul/code/ChePP/scripts/syzyy");
 
+    auto engine = std::make_unique<Engine>(pos);
 
-    position_t pos;
-    if (!pos.from_fen("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - 0 1"))
+    const auto start = std::chrono::high_resolution_clock::now();
+    volatile int32_t acc = 0;
+    for  (int i = 0; i < 1'000'000'000; i++)
     {
-        throw std::invalid_argument("invalid position");
+        acc += nnue.evaluate(pos.color());
     }
-    pos.from_fen("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - 0 1");
-    //pos.from_fen("1q2bn2/6pk/2p1pr1p/2Q2p1P/1PP5/5N2/5PP1/4RBK1 w - - 0 1");
-    //pos.from_fen("8/Q5pk/5rnp/5B1q/1PPp4/4R1P1/5P2/3b2K1 w - - 0 9");
-    //pos.from_fen("1k2r3/1p1bP3/2p2p1Q/Ppb5/4Rp1P/2q2N1P/5PB1/6K1 b - - 0 1");
-    //pos.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    //pos.from_fen("r2q1rk1/4bppp/1pn1p3/p4b2/1nNP4/4BN2/PP2BPPP/R2Q1RK1 w - - 2 13");
-    //pos.from_fen("2kr4/ppq2pp1/2b1pn2/2P4r/2P5/3BQN1P/P4PP1/R4RK1 b - - 0 1");
+    const auto end = std::chrono::high_resolution_clock::now();
+    const auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "checksum " << acc << " time " <<  delta.count() << std::endl;
 
-    std::cout << pos;
-
-    //FileSource weight_source{"engine/src/network.net"};
-    MmapSource weight_source{network_net};
-    const Deserializer deserializer{weight_source};
-    const DotNetParser parser{deserializer};
-
-    Koi::Net net{
-        Koi::ReluT{},
-        Koi::DenseT{},
-        Koi::QuantT{},
-    };
-    parser.load_network(net);
-
-
-    for (int i = 0; i < 50; i++)
+    for (int i = 0; i < 5; i++)
     {
+        /**
         std::optional<move_t> player_move = std::nullopt;
         move_list_t moves;
         gen_legal<WHITE>(pos, moves);
@@ -120,21 +117,24 @@ int main() {
                 }
             }
         }
+
         pos.do_move(*player_move);
         std::cout << pos;
 
+        **/
 
-        Searcher<BLACK> sw(pos, net, 20, 2000);
-        auto mv = sw.FindBestMove();
-        pos.do_move(mv);
+
+        Searcher<WHITE> sw(pos, 20, 2000);
+        auto mvw = sw.FindBestMove();
+        pos.do_move(mvw);
         std::cout << pos;
 
-
-
-
-
-
+        Searcher<BLACK> sb(pos, 20, 2000);
+        auto mvb = sb.FindBestMove();
+        pos.do_move(mvb);
+        std::cout << pos;
     }
-
     return 0;
 }
+
+

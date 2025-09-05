@@ -10,6 +10,7 @@
 #include <bits/shared_ptr_base.h>
 #include <optional>
 #include <vector>
+#include "ChePP/engine/zobrist.h"
 
 enum tt_bound_t : uint8_t {
     EXACT,
@@ -21,17 +22,17 @@ struct tt_entry_t
 {
 
     tt_entry_t() noexcept = default;
-    tt_entry_t(const hash_t hash, const int depth, const int score, const tt_bound_t bound, const int generation)
-        : m_hash(hash), m_depth(depth), m_score(score), m_bound(bound), m_generation(generation)
+    tt_entry_t(const hash_t hash, const int depth, const int score, const tt_bound_t bound, const int generation, const Move move)
+        : m_hash(hash), m_depth(depth), m_score(score), m_move(move), m_bound(bound), m_generation(generation)
     {
     }
 
     hash_t  m_hash;
-    int m_depth;
-    int m_score;
+    uint16_t m_depth;
+    int16_t m_score;
+    Move m_move;
     tt_bound_t m_bound;
-
-    int m_generation;
+    uint8_t m_generation;
 };
 
 
@@ -49,13 +50,17 @@ struct tt_t
         std::cout << m_size << std::endl;
         m_table.resize(m_size);
         std::ranges::fill(m_table, tt_entry_t());
-        new_generation();
+    }
+
+    void prefetch(hash_t hash) const noexcept {
+        const size_t idx = index(hash);
+        __builtin_prefetch(&m_table[idx], 0, 3);
     }
 
     [[nodiscard]] std::optional<tt_entry_t> probe(const hash_t hash, const int depth, const int alpha, const int beta) const
     {
         const tt_entry_t& cur = m_table[index(hash)];
-        if (cur.m_hash != hash || cur.m_depth < depth || cur.m_generation != m_generation)
+        if (cur.m_hash != hash)
         {
             return std::nullopt;
         }
@@ -74,9 +79,9 @@ struct tt_t
     return std::nullopt;
     }
 
-    void store(const hash_t hash, const int depth, const int score, const int alpha, const int beta)
+    void store(const hash_t hash, const int depth, const int score, const int alpha, const int beta, const Move move)
     {
-        tt_entry_t& cur = m_table[index(hash)];
+        const tt_entry_t& cur = m_table[index(hash)];
         tt_bound_t bound;
         if (score <= alpha) {
             bound = UPPER;
@@ -85,10 +90,9 @@ struct tt_t
         } else {
             bound = EXACT;
         }
-        const auto  entry = tt_entry_t(hash, depth, score, bound, m_generation);
-        bool replace = cur.m_depth <= depth || cur.m_generation != m_generation;
-        if (!replace) return;
-        if (cur.m_bound == EXACT || cur.m_hash != hash || depth + 4 > cur.m_depth) {
+        const auto  entry = tt_entry_t(hash , depth, score, bound, m_generation, move);
+        if (bool replace = cur.m_depth <= depth || cur.m_generation != m_generation; !replace) return;
+        if (cur.m_bound == EXACT || cur.m_hash != hash|| depth + 4 > cur.m_depth) {
             //if (cur.m_bound == EXACT) return;
             m_table[index(hash)] = entry;
         }
@@ -100,7 +104,7 @@ struct tt_t
     }
 
 private:
-    size_t index(const hash_t hash) const
+    [[nodiscard]] size_t index(const hash_t hash) const
     {
         return hash & (m_size - 1);
     }
@@ -110,7 +114,7 @@ private:
     std::vector<tt_entry_t> m_table;
 };
 
-extern tt_t g_tt;
+inline tt_t g_tt;
 
 
 

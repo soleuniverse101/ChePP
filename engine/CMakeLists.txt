@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(ChePP C CXX)
 
-
 include(FetchContent)
 
+# Fathom is a used to probe tablebases
 FetchContent_Declare(
         fathom
         GIT_REPOSITORY https://github.com/basil00/Fathom.git
@@ -11,6 +11,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fathom)
 
+# Highway is used for cross platform SIMD code
 FetchContent_Declare(
         highway
         GIT_REPOSITORY https://github.com/google/highway.git
@@ -18,49 +19,70 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(highway)
 
-file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
-        src/*.cpp
-)
-list(FILTER ENGINE_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
-
+# NNUE weights, embed directly into he binary, avoids any relative path issue at runtime
 set(NETWORK_BIN ${CMAKE_CURRENT_SOURCE_DIR}/resources/network.net)
-set(NETWORK_HEADER ${CMAKE_CURRENT_BINARY_DIR}/network_net.h)
-set(NETWORK_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/network_net.c)
+set(NETWORK_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/ChePP/engine/network_net.h)
+set(NETWORK_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/network_net.cpp)
+set(NETWORK_CFG ${CMAKE_CURRENT_SOURCE_DIR}/resources/format.txt)
 
-add_executable(bin2c ../scripts/bin2c.c)
+add_executable(bin2h ${CMAKE_CURRENT_SOURCE_DIR}/scripts/bin2h.cpp)
 
 add_custom_command(
         OUTPUT ${NETWORK_HEADER} ${NETWORK_SOURCE}
-        COMMAND $<TARGET_FILE:bin2c> ${NETWORK_BIN} ${NETWORK_HEADER} ${NETWORK_SOURCE} "network_net"
-        DEPENDS ${NETWORK_BIN} ../scripts/bin2c.c bin2c
+        COMMAND $<TARGET_FILE:bin2h> ${NETWORK_BIN} ${NETWORK_CFG} ${NETWORK_HEADER} ${NETWORK_SOURCE}
+        DEPENDS ${NETWORK_BIN} scripts/bin2h.cpp bin2h
         COMMENT "Generating embedded network_net resource"
 )
 
-add_custom_target(embed_network ALL DEPENDS ${NETWORK_HEADER} ${NETWORK_SOURCE})
-
-
-list(APPEND ENGINE_SOURCES
-        ${fathom_SOURCE_DIR}/src/tbprobe.c
+add_custom_target(embed_network ALL
+        DEPENDS ${NETWORK_HEADER} ${NETWORK_SOURCE}
 )
 
-add_library(ChePP_engine STATIC ${ENGINE_SOURCES} ${NETWORK_SOURCE})
+# Sources
+set(ENGINE_SOURCES
+        ${fathom_SOURCE_DIR}/src/tbprobe.c
+        ${NETWORK_SOURCE}
+)
+
+add_library(ChePP_engine STATIC ${ENGINE_SOURCES})
 
 target_include_directories(ChePP_engine PUBLIC
         ${CMAKE_SOURCE_DIR}/engine/include
+        ${CMAKE_SOURCE_DIR}/engine/external
         ${fathom_SOURCE_DIR}
         ${highway_SOURCE_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-
 target_compile_definitions(ChePP_engine PRIVATE TB_NO_THREADS=1)
 
-add_dependencies(ChePP_engine embed_network)
 
+# Store different versions of the exeutable
+# Override the name with -DENGINE_VERSION=name
+# Useful for benchmarking elo gains
+execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_HASH
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
+if (NOT GIT_HASH)
+    set(GIT_HASH "nogit")
+endif()
 
-add_executable(ChePP src/main.cpp)
-target_link_libraries(ChePP PRIVATE ChePP_engine)
+set(ENGINE_VERSION "${GIT_HASH}" CACHE STRING "Engine version string")
+
+# The UCI version of the engine
+# We could also store the static lib but we don-t really need it
+# (Do we even need the static lib to be compiled separately)
+add_executable(ChePP_${ENGINE_VERSION} src/main.cpp)
+target_link_libraries(ChePP_${ENGINE_VERSION} PRIVATE ChePP_engine)
+
+set_target_properties(ChePP_${ENGINE_VERSION} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../bin/versions
+)
 
 
 add_subdirectory(gtests)
