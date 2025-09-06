@@ -57,42 +57,22 @@ struct tt_t
         __builtin_prefetch(&m_table[idx], 0, 3);
     }
 
-    [[nodiscard]] std::optional<tt_entry_t> probe(const hash_t hash, const int depth, const int alpha, const int beta) const
+    [[nodiscard]] std::optional<tt_entry_t> probe(const hash_t hash) const
     {
         const tt_entry_t& cur = m_table[index(hash)];
         if (cur.m_hash != hash)
         {
             return std::nullopt;
         }
-        switch (cur.m_bound) {
-            case EXACT:
-                return cur;
-            case LOWER:
-                if (cur.m_score >= beta)
-                    return cur;
-                break;
-            case UPPER:
-                if (cur.m_score <= alpha)
-                    return cur;
-                break;
-        }
-    return std::nullopt;
+        return cur;
     }
 
-    void store(const hash_t hash, const int depth, const int score, const int alpha, const int beta, const Move move)
+    void store(const hash_t hash, const int depth, const int score, tt_bound_t bound, const Move move)
     {
         const tt_entry_t& cur = m_table[index(hash)];
-        tt_bound_t bound;
-        if (score <= alpha) {
-            bound = UPPER;
-        } else if (score >= beta) {
-            bound = LOWER;
-        } else {
-            bound = EXACT;
-        }
         const auto  entry = tt_entry_t(hash , depth, score, bound, m_generation, move);
-        if (bool replace = cur.m_depth <= depth || cur.m_generation != m_generation; !replace) return;
-        if (cur.m_bound == EXACT || cur.m_hash != hash|| depth + 4 > cur.m_depth) {
+        bool replace = cur.m_depth < depth || cur.m_generation != m_generation || (cur.m_bound != EXACT && bound == EXACT) || cur.m_hash != hash;
+        if (replace && (true ||depth + 4 > cur.m_depth)) {
             //if (cur.m_bound == EXACT) return;
             m_table[index(hash)] = entry;
         }

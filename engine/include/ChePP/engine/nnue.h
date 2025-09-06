@@ -73,8 +73,8 @@ struct FeatureTransformer
 
     static bool needs_refresh(const Position& pos, const Color view, const Move& move)
     {
-        return (pos.piece_at(move.to_sq()) == Piece{view, KING} &&
-                king_square_index(move.from_sq()) != king_square_index(move.to_sq()));
+        return (pos.piece_at(move.to_sq()) == Piece{view, KING}) &&
+                king_square_index(move.from_sq()) != king_square_index(move.to_sq());
     }
 
     static std::pair<RetT, RetT> get_features(const Position& pos, const Color view, const Move& move,
@@ -109,7 +109,7 @@ struct FeatureTransformer
                 color_diff.at(c).for_each_square(
                     [&](const Square& sq)
                     {
-                        if (prev.color_occupancy(c).is_set(sq.index()))
+                        if (prev.color_occupancy(c).is_set(sq))
                         {
                             rem(sq, prev.piece_at(sq));
                         }
@@ -165,7 +165,7 @@ namespace Eval
 
         alignas(64) std::array<AccumulatorT, MAX_PLY> white_accumulators{};
         alignas(64) std::array<AccumulatorT, MAX_PLY> black_accumulators{};
-        int m_ply;
+        int m_ply{};
 
         AccumulatorT& white_acc() { return white_accumulators[m_ply]; }
 
@@ -290,7 +290,7 @@ namespace Eval
             }
         }
 
-        template <size_t UNROLL = 8>
+        template <size_t UNROLL = 4>
         int32_t evaluate(const Color view)
         {
             const auto& our_acc   = (view == WHITE ? white_acc() : black_acc());
@@ -304,14 +304,19 @@ namespace Eval
             alignas(64) Vec<D32> acc = {};
 
             for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D16{})) {
-                for (size_t u = 0; u < UNROLL; ++u) {
-                    auto v_our   = Max(Load(D16{}, &our_acc[i + u*Lanes(D16{})]), Zero(D16{}));
-                    auto v_their = Max(Load(D16{}, &their_acc[i + u*Lanes(D16{})]), Zero(D16{}));
-                    auto w_our   = Load(D16{}, &g_hidden_weights[i + u*Lanes(D16{})]);
-                    auto w_their = Load(D16{}, &g_hidden_weights[i + OutSz + u*Lanes(D16{})]);
+                alignas(64) Vec<D16> v_our[UNROLL];
+                alignas(64) Vec<D16> v_their[UNROLL];
+                alignas(64) Vec<D16> w_our[UNROLL];
+                alignas(64) Vec<D16> w_their[UNROLL];
 
-                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our, w_our));
-                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their, w_their));
+                for (size_t u = 0; u < UNROLL; ++u) {
+                    v_our[u]   = Max(Load(D16{}, &our_acc[i + u*Lanes(D16{})]), Zero(D16{}));
+                    v_their[u] = Max(Load(D16{}, &their_acc[i + u*Lanes(D16{})]), Zero(D16{}));
+                    w_our[u]   = Load(D16{}, &g_hidden_weights[i + u*Lanes(D16{})]);
+                    w_their[u] = Load(D16{}, &g_hidden_weights[i + OutSz + u*Lanes(D16{})]);
+
+                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our[u], w_our[u]));
+                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their[u], w_their[u]));
                 }
             }
 
@@ -329,7 +334,10 @@ struct Engine
 {
     Position        position{};
     Eval::NNUE<512> nnue{};
-    explicit Engine(const Position& pos) : position(pos) {}
+    explicit Engine(const Position& pos) : position(pos)
+    {
+        nnue.init(pos);
+    }
     void do_move(const Move move)
     {
         position.do_move(move);
@@ -340,7 +348,7 @@ struct Engine
         position.undo_move();
         nnue.undo_move();
     }
-    int32_t evaluate(const Color view) { return nnue.evaluate(view); }
+    int32_t evaluate() { return nnue.evaluate(position.color()); }
 };
 
 #endif

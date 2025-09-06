@@ -68,6 +68,10 @@ class Bitboard
     constexpr void               set(const int bit) noexcept { m_ |= (1ULL << bit); }
     constexpr void               unset(const int bit) noexcept { m_ &= ~(1ULL << bit); }
     constexpr void               flip(const int bit) noexcept { m_ ^= (1ULL << bit); }
+    [[nodiscard]] constexpr bool is_set(const Square sq) const noexcept { return is_set(sq.value()); }
+    constexpr void               set(const Square sq) noexcept { set(sq.value()); }
+    constexpr void               unset(const Square sq) noexcept { unset(sq.value()); }
+    constexpr void               flip(const Square sq) noexcept { flip(sq.value()); }
 
     // popcount/lsb/msb delegated to bit::utils
     [[nodiscard]] constexpr int popcount() const noexcept { return bit::popcount(m_); }

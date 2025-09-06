@@ -858,4 +858,13 @@ constexpr int mated_in(const int ply) noexcept
     return MATED + ply;
 }
 
+struct SearchStackNode
+{
+    Move move{Move::none()};
+    int  ply{};
+    Move killer1{Move::none()};
+    Move killer2{Move::none()};
+    EnumArray<Square, EnumArray<Square, int>> history{};
+};
+
 #endif

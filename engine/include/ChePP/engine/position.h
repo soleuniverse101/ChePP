@@ -177,6 +177,7 @@ class Position
     [[nodiscard]] Bitboard attacking_sq_bb(Square sq) const;
     template <Color c>
     [[nodiscard]] bool is_legal(Move move) const;
+    bool               is_legal(Move move) const;
 
     template <PieceType pt>
     void update_checkers_and_blockers(Color c);
@@ -202,6 +203,7 @@ class Position
     friend std::ostream&      operator<<(std::ostream& os, const Position& pos) { return os << pos.to_string(); }
 
     [[nodiscard]] std::optional<Move> from_uci(const std::string_view& uci) const;
+    int                               see(Move move) const;
 
   private:
     void push_state()
@@ -543,6 +545,13 @@ bool Position::is_legal(const Move move) const
     return true;
 }
 
+inline bool Position::is_legal(const Move move) const
+{
+    if (color() == WHITE) return is_legal<WHITE>(move);
+    if (color() == BLACK) return is_legal<BLACK>(move);
+    return false;
+}
+
 inline void Position::do_move(const Move move)
 {
     push_state();
@@ -660,10 +669,7 @@ inline bool Position::is_draw() const
         {
             return false;
         }
-        if (state.hash().value() == target)
-        {
-            hits++;
-        }
+        hits += state.hash().value() == target;
         if (hits >= 3)
         {
             return true;
@@ -715,5 +721,92 @@ inline std::optional<Move> Position::from_uci(const std::string_view& uci) const
     }
     return incomplete;
 }
+
+
+inline int Position::see(const Move move) const
+{
+
+    assert(move.type_of() != CASTLING);
+
+    const Square from = move.from_sq();
+    const Square to   = move.to_sq();
+    const Piece moving_pc   = piece_at(from);
+
+    assert(moving_pc);
+
+    const Color us = moving_pc.color();
+    const Color them = ~us;
+    const Direction up = (us == WHITE) ? NORTH : SOUTH;
+    const bool is_ep = move.type_of() == EN_PASSANT;
+
+    std::vector<int> gains;
+    gains.reserve(32);
+
+    Bitboard occ          = occupancy();
+    occ.unset(is_ep ? to - up : to);
+
+    auto attackers = attacking_sq_bb(to, occ);
+
+    if (attackers.is_set(ksq(WHITE)) && attackers.is_set(ksq(BLACK)))
+    {
+        attackers.unset(ksq(WHITE));
+        attackers.unset(ksq(BLACK));
+    }
+
+    auto capture = [&] (const Square sq)
+    {
+        occ &= ~Bitboard(sq);
+        attackers |= (attacks<ROOK>(to, occ) & pieces_bb(ROOK, QUEEN));
+        attackers |= (attacks<BISHOP>(to, occ) & pieces_bb(BISHOP, QUEEN));
+        attackers &= occ;
+    };
+
+    const Piece captured = piece_at(is_ep ? to - up : to);
+    assert(captured);
+
+    capture(from);
+    gains.push_back(captured.piece_value());
+    int balance = captured.piece_value();
+
+    Color side = them;
+    PieceType cur = piece_type_at(from);
+
+
+    while (true)
+    {
+        const Bitboard attacking = attackers & color_occupancy(side);
+
+        if (!attacking) break;
+
+        Square chosen_sq        = NO_SQUARE;
+        PieceType   chosen_pt   = NO_PIECE_TYPE;
+
+        for (const auto pt : PieceType::values())
+        {
+            const auto bb =  pieces_bb(side, pt) & attacking;
+            if (bb)
+            {
+                chosen_pt = pt;
+                chosen_sq = Square{bb.get_lsb()};
+                break;
+            }
+        }
+
+        capture(chosen_sq);
+        side = ~side;
+
+        balance = -balance + cur.piece_value();
+        gains.push_back(balance);
+
+        cur = chosen_pt;
+
+    }
+
+    for (int i = static_cast<int>(gains.size()) - 1; i > 0; --i)
+        gains[i-1] = std::min(-gains[i], gains[i-1]);
+
+    return gains.empty() ? 0 : gains[0];
+}
+
 
 #endif
