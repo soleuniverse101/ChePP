@@ -138,8 +138,8 @@ void gen_pawn_moves(const Position& pos, MoveList& list)
     constexpr Bitboard bb_third_rank{relative_rank<c, RANK_3>};
     const Bitboard     check_mask = pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c);
     const Bitboard     available  = ~pos.occupancy();
-    const Bitboard     enemy      = pos.color_occupancy(~c);
-    const Bitboard     pawns      = pos.pieces_bb(c, PAWN);
+    const Bitboard     enemy      = pos.occupancy(~c);
+    const Bitboard     pawns      = pos.occupancy(c, PAWN);
     const Bitboard     ep_bb      = pos.ep_square() == NO_SQUARE ? bb::empty() : bb(pos.ep_square());
 
     // straight
@@ -190,22 +190,22 @@ void gen_pawn_moves(const Position& pos, MoveList& list)
 template <PieceType pc>
 void gen_pc_moves(const Position& pos, MoveList& list)
 {
-    const Color c = pos.color();
+    const Color c = pos.side_to_move();
     const Bitboard check_mask{pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c)};
-    Bitboard       bb{pos.pieces_occupancy(c, pc)};
+    Bitboard       bb{pos.occupancy(c, pc)};
 
     bb.for_each_square(
         [&](const Square from)
         {
-            Bitboard atk{attacks<pc>(from, pos.occupancy()) & ~pos.color_occupancy(c) & check_mask};
+            Bitboard atk{attacks<pc>(from, pos.occupancy()) & ~pos.occupancy(c) & check_mask};
             atk.for_each_square([&](const Square to) { list.add(Move::make<NORMAL>(from, to)); });
         });
 }
 
 inline void gen_castling(const Position& pos, MoveList& list)
 {
-    const Color c = pos.color();
-    const CastlingRights rights = pos.crs();
+    const Color c = pos.side_to_move();
+    const CastlingRights rights = pos.castling_rights();
 
     if (pos.check_mask(c) || !rights.has_any_color(c))
         return;
@@ -234,11 +234,11 @@ inline void gen_castling(const Position& pos, MoveList& list)
 
 inline void gen_king_moves(const Position& pos, MoveList& list)
 {
-    const Color c = pos.color();
+    const Color c = pos.side_to_move();
     const Square   from  = pos.ksq(c);
     const Bitboard moves = attacks<KING>(from, pos.occupancy());
 
-    (moves & (~pos.occupancy() | pos.color_occupancy(~c))) // unoccupied or capture
+    (moves & (~pos.occupancy() | pos.occupancy(~c))) // unoccupied or capture
         .for_each_square([&](const Square to) { list.add(Move::make<NORMAL>(from, to)); });
 
     gen_castling(pos, list);
@@ -267,7 +267,7 @@ MoveList gen_moves(const Position& pos)
 
 inline MoveList gen_moves(const Position& pos)
 {
-    if (pos.color() == WHITE) return gen_moves<WHITE>(pos);
+    if (pos.side_to_move() == WHITE) return gen_moves<WHITE>(pos);
     return gen_moves<BLACK>(pos);
 }
 
@@ -283,14 +283,14 @@ inline MoveList filter_tactical(const Position& pos, const MoveList& list)
 {
     MoveList ret;
     std::ranges::copy_if(list, std::back_inserter(ret), [&](const ScoredMove& mv) {
-        return (pos.is_occupied(mv.move.to_sq()) || mv.move.type_of() == PROMOTION);
+        return pos.is_occupied(mv.move.to_sq()) || mv.move.type_of() == EN_PASSANT || mv.move.type_of() == PROMOTION;
     });
     return ret;
 }
 
-inline void perft(Position& pos, const int ply, size_t& out)
+inline void perft(const Position& prev, const int ply, size_t& out)
 {
-    MoveList l = gen_legal(pos);
+    MoveList l = gen_legal(prev);
 
     if (ply == 1)
     {
@@ -300,9 +300,9 @@ inline void perft(Position& pos, const int ply, size_t& out)
 
     for (const auto [move, score] : l)
     {
-        pos.do_move(move);
-        perft(pos, ply - 1, out);
-        pos.undo_move();
+        Position next{prev};
+        next.do_move(move);
+        perft(next, ply - 1, out);
     }
 }
 

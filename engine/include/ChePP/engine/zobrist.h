@@ -12,12 +12,8 @@
 
 using hash_t = uint64_t;
 
-class Position;
-
-class zobrist_t
+struct zobrist_t
 {
-  public:
-    explicit zobrist_t(const Position& pos);
     explicit zobrist_t(const hash_t& hash) : m_hash(hash) {}
     zobrist_t(const zobrist_t& other) = default;
     explicit zobrist_t()              = default;

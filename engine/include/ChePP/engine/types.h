@@ -15,8 +15,11 @@
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
+#include <format>
 #include <unordered_set>
 #include <vector>
+
+struct Position;
 
 // a custom enum of consecutive integers 0 ... N and a NONE value N + 1
 template <typename DerivedT, typename UnderlyingT, std::size_t COUNT,
@@ -361,7 +364,7 @@ constexpr Square H8{FILE_H, RANK_8};
 
 constexpr Square NO_SQUARE{64};
 
-static constexpr std::array<std::string_view, 7> piece_type_repr = {"p", "n", "b", "r", "q", "k", "-"};
+static constexpr std::array<std::string_view, 7> piece_type_repr = {"P", "N", "B", "R", "Q", "K", "-"};
 
 struct PieceType : EnumBase<PieceType, uint8_t, 6, piece_type_repr, true, true>
 {
@@ -546,6 +549,7 @@ enum move_type_t : uint16_t
     CASTLING   = 3 << 14
 };
 
+
 // a move is encoded as an 16 bit unsigned int
 // 0-5 bit : to square (square 0 to 63)
 // 6-11 bit : from square (square 0 to 63)
@@ -627,6 +631,8 @@ class Move
 
     friend std::ostream& operator<<(std::ostream& os, const Move mv) { return os << mv.to_string(); }
 
+    std::string to_algebraic(const Position& pos) const;
+
     std::uint16_t m_data;
 };
 
@@ -706,25 +712,6 @@ struct CastlingRights
 
 
     MaskT m_mask;
-
-    /**
-    static constexpr auto reduce_str = [](std::string_view sv)
-    {
-        return std::ranges::fold_left(sv, 0, [](const std::size_t acc, const char c)
-                                      { return static_cast<char>((acc * 131 + c)); });
-    };
-
-    static constexpr auto                                        reduced = reduce<char>(repr, reduce_str);
-    static constexpr PerfectHash<char, MaskT, NComb, 1>          hash{reduced, make_increasing_array<MaskT, NComb>(),
-                                                             XorshiftPRNG::next};
-    [[nodiscard]] static constexpr std::optional<CastlingRights> from_string(const std::string_view& sv)
-    {
-        if (sv.size() == 0 || sv.size() > 4)
-            return std::nullopt;
-        const auto val = hash(reduce_str(sv));
-        return val ? std::optional{CastlingRights(*val)} : std::nullopt;
-    }
-    **/
 };
 
 constexpr EnumArray<Square, CastlingRights> CastlingRights::lost_table = []
@@ -786,6 +773,18 @@ constexpr std::optional<Move> Move::from_uci(const std::string_view& sv)
     return make<NORMAL>(*from, *to);
 }
 
+constexpr std::array<std::string_view, 4> result_repr = {"1-0", "0-1", "1/2-1/2", "*"};
+struct Result : EnumBase<Result, int, 3, result_repr>
+{
+    using base = EnumBase;
+    using base::EnumBase;
+};
+
+constexpr Result WIN_WHITE{0};
+constexpr Result WIN_BLACK{1};
+constexpr Result DRAW{2};
+constexpr Result NO_RESULT{3};
+
 namespace bit
 {
     template <std::unsigned_integral T>
@@ -830,7 +829,7 @@ namespace bit
 
 } // namespace bit
 
-constexpr size_t MAX_PLY = 255;
+constexpr int MAX_PLY = 255;
 
 constexpr int MATE_SCORE    = 32000;
 constexpr int INF_SCORE     = 32001;
@@ -861,10 +860,54 @@ constexpr int mated_in(const int ply) noexcept
 struct SearchStackNode
 {
     Move move{Move::none()};
-    int  ply{};
     Move killer1{Move::none()};
     Move killer2{Move::none()};
     EnumArray<Square, EnumArray<Square, int>> history{};
 };
+
+
+struct Date {
+    int y, m, d;
+
+    [[nodiscard]] std::string to_string() const {
+        char buf[11];
+        std::sprintf(buf, "%04d.%02d.%02d", y, m, d);
+        return buf;
+    }
+    static bool from_string(const std::string& s, Date& out) {
+        if (s.size() != 10) return false;
+        int yy, mm, dd;
+        if (std::sscanf(s.c_str(), "%d.%d.%d", &yy, &mm, &dd) != 3) return false;
+
+        if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return false;
+
+        out = Date{yy, mm, dd};
+        return true;
+    }
+
+    static std::optional<Date> from_string(const std::string& s)
+    {
+        Date d{};
+        if (!from_string(s, d)) return std::nullopt;
+        return d;
+    }
+};
+
+
+
+
+
+struct PGNInfo {
+    std::string event = "Engine Benchmark";
+    std::string site  = "?";
+    Date date{};
+    int round = 1;
+    std::string White = "WhiteEngine";
+    std::string Black = "BlackEngine";
+    Result      result = NO_RESULT;
+};
+
+inline constexpr auto start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
 
 #endif

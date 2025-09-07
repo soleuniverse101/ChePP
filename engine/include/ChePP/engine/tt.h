@@ -47,8 +47,12 @@ struct tt_t
     void init (const size_t mb)
     {
         m_size = floor_power_of_two(mb * 1024 * 1024 / sizeof(tt_entry_t));
-        std::cout << m_size << std::endl;
         m_table.resize(m_size);
+        std::ranges::fill(m_table, tt_entry_t());
+    }
+
+    void reset()
+    {
         std::ranges::fill(m_table, tt_entry_t());
     }
 
@@ -71,8 +75,9 @@ struct tt_t
     {
         const tt_entry_t& cur = m_table[index(hash)];
         const auto  entry = tt_entry_t(hash , depth, score, bound, m_generation, move);
-        bool replace = cur.m_depth < depth || cur.m_generation != m_generation || (cur.m_bound != EXACT && bound == EXACT) || cur.m_hash != hash;
-        if (replace && (true ||depth + 4 > cur.m_depth)) {
+        bool replace = cur.m_depth < depth  || cur.m_generation != m_generation ||
+            (cur.m_bound != EXACT && bound == EXACT) || cur.m_hash != hash;
+        if (replace) {
             //if (cur.m_bound == EXACT) return;
             m_table[index(hash)] = entry;
         }

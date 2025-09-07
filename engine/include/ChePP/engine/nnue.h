@@ -55,7 +55,6 @@ class ArrayStack
 
     size_t size() const { return topIndex; }
 
-    // Iterators for ranges support
     auto begin() { return data.begin(); }
     auto end() { return data.begin() + topIndex; }
 
@@ -71,14 +70,12 @@ struct FeatureTransformer
 
     static constexpr size_t n_features_v = 16 * 12 * 64;
 
-    static bool needs_refresh(const Position& pos, const Color view, const Move& move)
+    static bool needs_refresh(const Position& cur, const Position& prev, const Color view)
     {
-        return (pos.piece_at(move.to_sq()) == Piece{view, KING}) &&
-                king_square_index(move.from_sq()) != king_square_index(move.to_sq());
+        return king_square_index(cur.ksq(view)) != king_square_index(prev.ksq(view));
     }
 
-    static std::pair<RetT, RetT> get_features(const Position& pos, const Color view, const Move& move,
-                                              const bool refresh)
+    static std::pair<RetT, RetT> get_features(const Position& cur, const Position& prev, const Color view, const bool refresh)
 
     {
         RetT add_v;
@@ -86,22 +83,19 @@ struct FeatureTransformer
 
         if (refresh)
         {
-            pos.occupancy().for_each_square([&](const Square& sq)
-                                            { add_v.push_back(get_index(view, pos.ksq(view), sq, pos.piece_at(sq))); });
+            cur.occupancy().for_each_square([&](const Square& sq)
+                                            { add_v.push_back(get_index(view, cur.ksq(view), sq, cur.piece_at(sq))); });
         }
         else
         {
-            const auto& prev = pos.state(pos.ply() - 1);
-            const auto& cur  = pos.state(pos.ply());
-
             auto add = [&](const Square sq, const Piece pc)
-            { add_v.push_back(get_index(view, pos.ksq(view), sq, pc)); };
+            { add_v.push_back(get_index(view, cur.ksq(view), sq, pc)); };
             auto rem = [&](const Square sq, const Piece pc)
-            { rem_v.push_back(get_index(view, pos.ksq(view), sq, pc)); };
+            { rem_v.push_back(get_index(view, cur.ksq(view), sq, pc)); };
 
             const EnumArray<Color, Bitboard> color_diff = {
-                prev.color_occupancy(WHITE) ^ cur.color_occupancy(WHITE),
-                prev.color_occupancy(BLACK) ^ cur.color_occupancy(BLACK),
+                prev.occupancy(WHITE) ^ cur.occupancy(WHITE),
+                prev.occupancy(BLACK) ^ cur.occupancy(BLACK),
             };
 
             for (const auto c : {WHITE, BLACK})
@@ -109,7 +103,7 @@ struct FeatureTransformer
                 color_diff.at(c).for_each_square(
                     [&](const Square& sq)
                     {
-                        if (prev.color_occupancy(c).is_set(sq))
+                        if (prev.occupancy(c).is_set(sq))
                         {
                             rem(sq, prev.piece_at(sq));
                         }
@@ -153,201 +147,167 @@ struct FeatureTransformer
 
 #include <hwy/highway.h>
 
+
 HWY_BEFORE_NAMESPACE();
-namespace Eval
-{
-        using namespace hwy::HWY_NAMESPACE;
-        template <size_t OutSz>
-        struct NNUE
-        {
-            using AccumulatorT = std::array<int16_t, OutSz>;
+using namespace hwy::HWY_NAMESPACE;
 
-            alignas(64) std::array<AccumulatorT, MAX_PLY> white_accumulators{};
-            alignas(64) std::array<AccumulatorT, MAX_PLY> black_accumulators{};
-            int m_ply{};
+struct Accumulator {
+    static constexpr auto OutSz = 512;
+    using AccumulatorT = std::array<int16_t, OutSz>;
 
-            AccumulatorT& white_acc() { return white_accumulators[m_ply]; }
+private:
+    HWY_ALIGN AccumulatorT white_accumulator{};
+    HWY_ALIGN AccumulatorT black_accumulator{};
 
-            AccumulatorT& black_acc() { return black_accumulators[m_ply]; }
+public:
+    Accumulator() = default;
+    explicit Accumulator(const Position& pos) {
+        const auto [wadd, wrem] = FeatureTransformer::get_features(pos, pos, WHITE, true);
+        refresh_acc(WHITE, wadd);
+        const auto [badd, brem] = FeatureTransformer::get_features(pos, pos, BLACK, true);
+        refresh_acc(BLACK, badd);
+    }
 
-            NNUE() : m_ply(0) {}
+    explicit Accumulator(const Accumulator& acc_prev, const Position& pos_cur, const Position& pos_prev) {
+        update(acc_prev, pos_cur, pos_prev, WHITE);
+        update(acc_prev, pos_cur, pos_prev, BLACK);
+    }
 
-            void init(const Position& pos)
-            {
-                const auto [wadd, wrem] = FeatureTransformer::get_features(pos, WHITE, Move::null(), true);
-                refresh_acc(WHITE, wadd);
-                const auto [badd, brem] = FeatureTransformer::get_features(pos, BLACK, Move::null(), true);
-                refresh_acc(BLACK, badd);
+    template <size_t UNROLL = 4>
+    int32_t evaluate(const Color view) {
+        const auto our_acc_ptr   =
+            static_cast<const int16_t*>(HWY_ASSUME_ALIGNED(view == WHITE ? white_accumulator.data() : black_accumulator.data(), 64));
+        const auto their_acc_ptr =
+            static_cast<const int16_t*>(HWY_ASSUME_ALIGNED(view == WHITE ? black_accumulator.data() : white_accumulator.data(), 64));
+
+        int32_t out = g_hidden_biases[0];
+
+        using D32 = ScalableTag<int32_t>;
+        using D16 = ScalableTag<int16_t>;
+
+        alignas(64) Vec<D32> acc = {};
+
+        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D16{})) {
+            alignas(64) Vec<D16> v_our[UNROLL];
+            alignas(64) Vec<D16> v_their[UNROLL];
+            alignas(64) Vec<D16> w_our[UNROLL];
+            alignas(64) Vec<D16> w_their[UNROLL];
+
+            for (size_t u = 0; u < UNROLL; ++u) {
+                if (i + u * Lanes(D16{}) < OutSz) {
+                    v_our[u]   = Max(Load(D16{}, &our_acc_ptr[i + u * Lanes(D16{})]), Zero(D16{}));
+                    v_their[u] = Max(Load(D16{}, &their_acc_ptr[i + u * Lanes(D16{})]), Zero(D16{}));
+
+                    w_our[u]   = Load(D16{}, &g_hidden_weights[i + u * Lanes(D16{})]);
+                    w_their[u] = Load(D16{}, &g_hidden_weights[i + OutSz + u * Lanes(D16{})]);
+
+                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our[u], w_our[u]));
+                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their[u], w_their[u]));
+                }
+            }
+        }
+
+        out += ReduceSum(D32{}, acc);
+
+        out = (out / 128) / 32;
+        return out;
+    }
+
+
+private:
+
+    void update(const Accumulator& prev, const Position& pos_cur, const Position& pos_prev, const Color view) {
+        const bool needs_refresh = FeatureTransformer::needs_refresh(pos_cur, pos_prev, view);
+        const auto [add, rem]    = FeatureTransformer::get_features(pos_cur, pos_prev, view, needs_refresh);
+        if (needs_refresh)
+            refresh_acc(view, add);
+        else
+            update_acc(prev, view, add, rem);
+    }
+
+    template <size_t UNROLL = 8>
+    void refresh_acc(const Color view, const FeatureTransformer::RetT& features) {
+        auto& acc = (view == WHITE ? white_accumulator : black_accumulator);
+
+        std::memcpy(acc.data(), g_ft_biases, OutSz * sizeof(int16_t));
+
+        using D = ScalableTag<int16_t>;
+        alignas(64) auto v_accumulators = std::array<decltype(Load(D{}, acc.data())), UNROLL>{};
+
+        auto* HWY_RESTRICT acc_ptr =  static_cast<int16_t*>(HWY_ASSUME_ALIGNED(acc.data(), 64));
+
+        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{})) {
+            for (size_t u = 0; u < UNROLL; ++u) {
+                if (i + u * Lanes(D{}) < OutSz)
+                    v_accumulators[u] = Load(D{}, &acc_ptr[i + u * Lanes(D{})]);
             }
 
-            void update(const Position& pos, const Move move, const Color view)
-            {
-                const bool needs_refresh = FeatureTransformer::needs_refresh(pos, view, move);
-                const auto [add, rem]    = FeatureTransformer::get_features(pos, view, move, needs_refresh);
-                if (needs_refresh)
-                    refresh_acc(view, add);
-                else
-                    update_acc(view, add, rem);
-            }
-
-            void do_move(const Position& pos, const Move move)
-            {
-                m_ply++;
-                update(pos, move, WHITE);
-                update(pos, move, BLACK);
-            }
-
-            void undo_move() { m_ply--; }
-
-
-            template <size_t UNROLL = 8>
-            void refresh_acc(const Color view, const FeatureTransformer::RetT& features)
-            {
-                auto& acc = (view == WHITE ? white_acc() : black_acc());
-                std::memcpy(acc.data(), g_ft_biases, OutSz * sizeof(int16_t));
-
-                using D    = ScalableTag<int16_t>;
-                using AccT = decltype(Load(D{}, acc.data()));
-                alignas(64) AccT v_accumulators[UNROLL];
-
-                for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{}))
-                {
-                    for (size_t u = 0; u < UNROLL; ++u)
-                    {
-                        if (i + u * Lanes(D{}) < OutSz)
-                            v_accumulators[u] = Load(D{}, &acc[i + u * Lanes(D{})]);
-                    }
-
-                    for (const auto f : features)
-                    {
-                        for (size_t u = 0; u < UNROLL; ++u)
-                        {
-                            if (i + u * Lanes(D{}) < OutSz)
-                            {
-                                auto v_weights    = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
-                                v_accumulators[u] = Add(v_accumulators[u], v_weights);
-                            }
-                        }
-                    }
-
-                    for (size_t u = 0; u < UNROLL; ++u)
-                    {
-                        if (i + u * Lanes(D{}) < OutSz)
-                            Store(v_accumulators[u], D{}, &acc[i + u * Lanes(D{})]);
+            for (const auto f : features) {
+                for (size_t u = 0; u < UNROLL; ++u) {
+                    if (i + u * Lanes(D{}) < OutSz) {
+                        auto v_weights = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
+                        v_accumulators[u] = Add(v_accumulators[u], v_weights);
                     }
                 }
             }
 
-            template <size_t UNROLL = 8>
-            void update_acc(const Color view, const FeatureTransformer::RetT& add, const FeatureTransformer::RetT& sub)
-            {
-                auto& acc  = (view == WHITE ? white_acc() : black_acc());
-                auto& prev = (view == WHITE ? white_accumulators[m_ply - 1] : black_accumulators[m_ply - 1]);
+            for (size_t u = 0; u < UNROLL; ++u) {
+                if (i + u * Lanes(D{}) < OutSz)
+                    Store(v_accumulators[u], D{}, &acc_ptr[i + u * Lanes(D{})]);
+            }
+        }
+    }
 
-                std::memcpy(acc.data(), prev.data(), OutSz * sizeof(int16_t));
+    template <size_t UNROLL = 8>
+    void update_acc(
+                    const Accumulator& previous,
+                    const Color view,
+                    const FeatureTransformer::RetT& add,
+                    const FeatureTransformer::RetT& sub) {
+        auto& acc  = (view == WHITE ? white_accumulator : black_accumulator);
+        auto& prev = (view == WHITE ? previous.white_accumulator : previous.black_accumulator);
 
-                using D    = ScalableTag<int16_t>;
-                using AccT = decltype(Load(D{}, acc.data()));
-                alignas(64) AccT v_accumulators[UNROLL];
+        std::memcpy(acc.data(), prev.data(), OutSz * sizeof(int16_t));
 
-                for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{}))
-                {
-                    for (size_t u = 0; u < UNROLL; ++u)
-                    {
-                        if (i + u * Lanes(D{}) < OutSz)
-                            v_accumulators[u] = Load(D{}, &acc[i + u * Lanes(D{})]);
-                    }
+        using D = ScalableTag<int16_t>;
+        alignas(64) auto v_accumulators = std::array<decltype(Load(D{}, acc.data())), UNROLL>{};
 
-                    for (const auto f : add)
-                    {
-                        for (size_t u = 0; u < UNROLL; ++u)
-                        {
-                            if (i + u * Lanes(D{}) < OutSz)
-                            {
-                                auto v_weights    = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
-                                v_accumulators[u] = Add(v_accumulators[u], v_weights);
-                            }
-                        }
-                    }
+        auto* HWY_RESTRICT acc_ptr = static_cast<int16_t*>(HWY_ASSUME_ALIGNED(acc.data(), 64));
 
-                    for (const auto f : sub)
-                    {
-                        for (size_t u = 0; u < UNROLL; ++u)
-                        {
-                            if (i + u * Lanes(D{}) < OutSz)
-                            {
-                                auto v_weights    = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
-                                v_accumulators[u] = Sub(v_accumulators[u], v_weights);
-                            }
-                        }
-                    }
+        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{})) {
+            for (size_t u = 0; u < UNROLL; ++u) {
+                if (i + u * Lanes(D{}) < OutSz)
+                    v_accumulators[u] = Load(D{}, &acc_ptr[i + u * Lanes(D{})]);
+            }
 
-                    for (size_t u = 0; u < UNROLL; ++u)
-                    {
-                        if (i + u * Lanes(D{}) < OutSz)
-                            Store(v_accumulators[u], D{}, &acc[i + u * Lanes(D{})]);
+            for (const auto f : add) {
+                for (size_t u = 0; u < UNROLL; ++u) {
+                    if (i + u * Lanes(D{}) < OutSz) {
+                        auto v_weights = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
+                        v_accumulators[u] = Add(v_accumulators[u], v_weights);
                     }
                 }
             }
 
-            template <size_t UNROLL = 4>
-            int32_t evaluate(const Color view)
-            {
-                const auto& our_acc   = (view == WHITE ? white_acc() : black_acc());
-                const auto& their_acc = (view == WHITE ? black_acc() : white_acc());
-
-                int32_t out = g_hidden_biases[0];
-
-                using D32 = ScalableTag<int32_t>;
-                using D16 = ScalableTag<int16_t>;
-
-                alignas(64) Vec<D32> acc = {};
-
-                for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D16{})) {
-                    alignas(64) Vec<D16> v_our[UNROLL];
-                    alignas(64) Vec<D16> v_their[UNROLL];
-                    alignas(64) Vec<D16> w_our[UNROLL];
-                    alignas(64) Vec<D16> w_their[UNROLL];
-
-                    for (size_t u = 0; u < UNROLL; ++u) {
-                        v_our[u]   = Max(Load(D16{}, &our_acc[i + u*Lanes(D16{})]), Zero(D16{}));
-                        v_their[u] = Max(Load(D16{}, &their_acc[i + u*Lanes(D16{})]), Zero(D16{}));
-                        w_our[u]   = Load(D16{}, &g_hidden_weights[i + u*Lanes(D16{})]);
-                        w_their[u] = Load(D16{}, &g_hidden_weights[i + OutSz + u*Lanes(D16{})]);
-
-                        acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our[u], w_our[u]));
-                        acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their[u], w_their[u]));
+            for (const auto f : sub) {
+                for (size_t u = 0; u < UNROLL; ++u) {
+                    if (i + u * Lanes(D{}) < OutSz) {
+                        auto v_weights = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
+                        v_accumulators[u] = Sub(v_accumulators[u], v_weights);
                     }
                 }
-
-                out += ReduceSum(D32{}, acc);
-
-                out = (out / 128) / 32;
-                return out;
             }
-        };
-} // namespace Eval
+
+            for (size_t u = 0; u < UNROLL; ++u) {
+                if (i + u * Lanes(D{}) < OutSz)
+                    Store(v_accumulators[u], D{}, &acc_ptr[i + u * Lanes(D{})]);
+            }
+        }
+    }
+
+};
+
 HWY_AFTER_NAMESPACE();
 
-struct Engine
-{
-    Position        position{};
-    Eval::NNUE<512> nnue{};
-    explicit Engine(const Position& pos) : position(pos)
-    {
-        nnue.init(pos);
-    }
-    void do_move(const Move move)
-    {
-        position.do_move(move);
-        nnue.do_move(position, move);
-    }
-    void undo_move()
-    {
-        position.undo_move();
-        nnue.undo_move();
-    }
-    int32_t evaluate() { return nnue.evaluate(position.color()); }
-};
 
 #endif

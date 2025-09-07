@@ -8,7 +8,7 @@
 #include <ranges>
 
 inline int mvv_lva_score(const Piece attacker, const Piece victim) {
-    return (victim.piece_value() - attacker.piece_value()) * 10;
+    return (victim.piece_value() - attacker.piece_value());
 }
 
 inline void score_moves(const Position& pos,
@@ -26,13 +26,14 @@ inline void score_moves(const Position& pos,
         } else if (move.type_of() == PROMOTION) {
             score = move.promotion_type().piece_value() * 8;
         } else {
-            const auto victim   = pos.piece_at(move.to_sq());
+            auto victim   = pos.piece_at(move.to_sq());
             const auto attacker = pos.piece_at(move.from_sq());
 
-            if (victim != NO_PIECE) {
+            if (victim != NO_PIECE || move.type_of() == EN_PASSANT) {
                 score = pos.see(move) * 10;
             } else {
                 score = ssNode.history[move.from_sq()][move.to_sq()];
+                auto lva = KING;
             }
         }
     }

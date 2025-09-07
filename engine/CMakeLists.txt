@@ -42,6 +42,7 @@ add_custom_target(embed_network ALL
 set(ENGINE_SOURCES
         ${fathom_SOURCE_DIR}/src/tbprobe.c
         ${NETWORK_SOURCE}
+        src/types.cpp
 )
 
 add_library(ChePP_engine STATIC ${ENGINE_SOURCES})
@@ -83,6 +84,15 @@ target_link_libraries(ChePP_${ENGINE_VERSION} PRIVATE ChePP_engine)
 set_target_properties(ChePP_${ENGINE_VERSION} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../bin/versions
 )
+
+add_executable(ChePP_benchmark src/benchmark.cpp)
+target_link_libraries(ChePP_benchmark PRIVATE ChePP_engine)
+add_dependencies(ChePP_benchmark ChePP_engine)
+
+set_target_properties(ChePP_benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../bin
+)
+
 
 
 add_subdirectory(gtests)
