@@ -72,7 +72,13 @@ struct FeatureTransformer
 
     static bool needs_refresh(const Position& cur, const Position& prev, const Color view)
     {
-        return king_square_index(cur.ksq(view)) != king_square_index(prev.ksq(view));
+        return prev.ksq(view) != cur.ksq(view);
+        int prev_king_square = prev.ksq(view).value() ^ 56;
+        const int prev_oK  = (7 * !(prev_king_square & 4)) ^ (56 * view.value()) ^ prev_king_square;
+        int king_square = cur.ksq(view).value() ^ 56;
+        const int oK  = (7 * !(king_square & 4)) ^ (56 * view.value()) ^ king_square;
+
+        return king_square_index(prev_oK) != king_square_index(oK);
     }
 
     static std::pair<RetT, RetT> get_features(const Position& cur, const Position& prev, const Color view, const bool refresh)
@@ -118,30 +124,38 @@ struct FeatureTransformer
     }
 
   private:
-    static FeatureT get_index(const Color view, const Square ksq, const Square sq, const Piece piece)
-    {
-        constexpr int PIECE_TYPE_FACTOR  = 64;
-        constexpr int PIECE_COLOR_FACTOR = PIECE_TYPE_FACTOR * 6;
-        constexpr int KING_SQUARE_FACTOR = PIECE_COLOR_FACTOR * 2;
 
-        const Square relative_king_sq  = (view == WHITE ? ksq : ksq.flipped_horizontally());
-        Square       relative_piece_sq = (view == WHITE ? sq : sq.flipped_horizontally());
+    static int king_square_index(int relative_king_square) {
+        constexpr int indices[64] {
+            -1, -1, -1, -1, 14, 14, 15, 15,    //
+            -1, -1, -1, -1, 14, 14, 15, 15,    //
+            -1, -1, -1, -1, 12, 12, 13, 13,    //
+            -1, -1, -1, -1, 12, 12, 13, 13,    //
+            -1, -1, -1, -1, 8,  9,  10, 11,    //
+            -1, -1, -1, -1, 8,  9,  10, 11,    //
+            -1, -1, -1, -1, 4,  5,  6,  7,     //
+            -1, -1, -1, -1, 0,  1,  2,  3,     //
+        };
 
-        const FeatureT king_sq_idx = king_square_index(relative_king_sq);
-        if (ksq.file().index() > 3)
-            relative_piece_sq = relative_piece_sq.flipped_vertically();
-
-        return relative_piece_sq.value() + piece.type().value() * PIECE_TYPE_FACTOR +
-               (piece.color() == view ? PIECE_COLOR_FACTOR : 0) + king_sq_idx * KING_SQUARE_FACTOR;
+        return indices[relative_king_square];
     }
 
-    static FeatureT king_square_index(const Square sq)
-    {
-        constexpr EnumArray<Square, FeatureT> indices = {
-            0,  1,  2,  3,  3,  2,  1,  0,  4,  5,  6,  7,  7,  6,  5,  4,  8,  9,  10, 11, 11, 10,
-            9,  8,  8,  9,  10, 11, 11, 10, 9,  8,  12, 12, 13, 13, 13, 13, 12, 12, 12, 12, 13, 13,
-            13, 13, 12, 12, 14, 14, 15, 15, 15, 15, 14, 14, 14, 14, 15, 15, 15, 15, 14, 14};
-        return indices[sq];
+    static int get_index(                     Color  view,                      Square king_sq,
+Square piece_sq,
+                     Piece  piece
+) {
+
+        const PieceType piece_type  = piece.type();
+        const Color     piece_color = piece.color();
+
+        int piece_square = piece_sq.value() ^ 56;
+        int king_square = king_sq.value() ^ 56;
+
+        const int oP  = piece_type.value() + 6 * (piece_color != view);
+        const int oK  = (7 * !(king_square & 4)) ^ (56 * view.value()) ^ king_square;
+        const int oSq = (7 * !(king_square & 4)) ^ (56 * view.value()) ^ piece_square;
+
+        return king_square_index(oK) * 12 * 64 + oP * 64 + oSq;
     }
 };
 
@@ -152,7 +166,9 @@ HWY_BEFORE_NAMESPACE();
 using namespace hwy::HWY_NAMESPACE;
 
 struct Accumulator {
-    static constexpr auto OutSz = 512;
+    static constexpr auto OutSz = 1024;
+    static constexpr auto L1Sz = 16;
+    static constexpr auto L2Sz = 32;
     using AccumulatorT = std::array<int16_t, OutSz>;
 
 private:
@@ -174,43 +190,79 @@ public:
     }
 
     template <size_t UNROLL = 4>
-    int32_t evaluate(const Color view) {
+    int32_t evaluate(const Color view) const
+    {
         const auto our_acc_ptr   =
             static_cast<const int16_t*>(HWY_ASSUME_ALIGNED(view == WHITE ? white_accumulator.data() : black_accumulator.data(), 64));
         const auto their_acc_ptr =
             static_cast<const int16_t*>(HWY_ASSUME_ALIGNED(view == WHITE ? black_accumulator.data() : white_accumulator.data(), 64));
 
-        int32_t out = g_hidden_biases[0];
-
         using D32 = ScalableTag<int32_t>;
         using D16 = ScalableTag<int16_t>;
+        using D8 = ScalableTag<int8_t>;
 
-        alignas(64) Vec<D32> acc = {};
+        using HalfD16 = FixedTag<int16_t, Lanes(D32{})>;
+        using HalfD8 = FixedTag<int8_t, Lanes(D16{})>;
 
-        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D16{})) {
-            alignas(64) Vec<D16> v_our[UNROLL];
-            alignas(64) Vec<D16> v_their[UNROLL];
-            alignas(64) Vec<D16> w_our[UNROLL];
-            alignas(64) Vec<D16> w_their[UNROLL];
+        using QuarterD8 = FixedTag<int8_t, Lanes(D32{})>;
 
-            for (size_t u = 0; u < UNROLL; ++u) {
-                if (i + u * Lanes(D16{}) < OutSz) {
-                    v_our[u]   = Max(Load(D16{}, &our_acc_ptr[i + u * Lanes(D16{})]), Zero(D16{}));
-                    v_their[u] = Max(Load(D16{}, &their_acc_ptr[i + u * Lanes(D16{})]), Zero(D16{}));
 
-                    w_our[u]   = Load(D16{}, &g_hidden_weights[i + u * Lanes(D16{})]);
-                    w_their[u] = Load(D16{}, &g_hidden_weights[i + OutSz + u * Lanes(D16{})]);
 
-                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our[u], w_our[u]));
-                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their[u], w_their[u]));
-                }
+        HWY_ALIGN std::array<int32_t, L1Sz> l1_out{};
+        std::memcpy(l1_out.data(), g_l1_biases, sizeof(g_l1_biases));
+        HWY_ALIGN std::array<int32_t, L2Sz> l2_out{};
+        std::memcpy(l2_out.data(), g_l2_biases, sizeof(g_l2_biases));
+        HWY_ALIGN int32_t out = g_out_bias[0];
+
+        //std::ranges::for_each(white_accumulator | std::views::take(10), [] (int16_t i) { std::cout << i << std::endl; });
+
+        for (int i = 0; i < L1Sz; ++i)
+        {
+
+            HWY_ALIGN Vec<D32> acc = Zero(D32{});
+            for (size_t j = 0; j < OutSz; j += Lanes(HalfD8{})) {
+
+                const Vec<D16> v_our = Min(Max(Load(D16{}, &our_acc_ptr[j]), Zero(D16{})), Set(D16{}, 127 * 32));
+                const Vec<D16> v_their = Min(Max(Load(D16{}, &their_acc_ptr[j]), Zero(D16{})), Set(D16{}, 127 * 32));
+
+                const Vec<D16> w_our = PromoteTo(D16{}, Load(HalfD8{}, &g_l1_weights[i * OutSz * 2 + j]));
+                const Vec<D16> w_their = PromoteTo(D16{}, Load(HalfD8{}, &g_l1_weights[i * OutSz * 2 + j + OutSz]));
+
+                acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our, w_our));
+                acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their, w_their));
             }
+            l1_out[i] += ReduceSum(D32{}, acc) / 32;
         }
 
-        out += ReduceSum(D32{}, acc);
+        //std::ranges::for_each(l1_out | std::views::take(10), [] (int16_t i) { std::cout << i << std::endl; });
 
-        out = (out / 128) / 32;
-        return out;
+
+        for (int i = 0; i < L2Sz; ++i)
+        {
+            HWY_ALIGN Vec<D32> acc = Zero(D32{});
+            for (size_t j = 0; j < L1Sz; j += Lanes(HalfD16{})) {
+
+                const Vec<D32> v = Max(Load(D32{}, &l1_out[j]), Zero(D32{}));
+
+                const Vec<D32> w = PromoteTo(D32{}, Load(HalfD16{}, &g_l2_weights[i * L1Sz + j]));
+
+                acc = Add(acc, Mul(v, w));
+            }
+            l2_out[i] += ReduceSum(D32{}, acc) / 32;
+        }
+
+        HWY_ALIGN Vec<D32> acc = Zero(D32{});
+        for (size_t j = 0; j < L2Sz; j += Lanes(HalfD16{})) {
+
+            const Vec<D32> v = Max(Load(D32{}, &l2_out[j]), Zero(D32{}));
+
+            const Vec<D32> w = PromoteTo(D32{}, Load(HalfD16{}, &g_out_weights[j]));
+
+            acc = Add(acc, Mul(v, w));
+        }
+        out += ReduceSum(D32{}, acc) / 32;
+
+        return out / 32;
     }
 
 

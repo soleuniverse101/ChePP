@@ -42,7 +42,6 @@ add_custom_target(embed_network ALL
 set(ENGINE_SOURCES
         ${fathom_SOURCE_DIR}/src/tbprobe.c
         ${NETWORK_SOURCE}
-        src/types.cpp
 )
 
 add_library(ChePP_engine STATIC ${ENGINE_SOURCES})

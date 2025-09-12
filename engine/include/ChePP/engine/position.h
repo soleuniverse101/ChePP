@@ -16,11 +16,16 @@
 
 struct Position
 {
-    Position() {}
+    Position() = default;
+    Position(const Position& prev, const Move move) : Position(prev)
+    {
+        do_move(move);
+    }
 
 
     [[nodiscard]] Square                          ep_square() const { return m_ep_square; }
     [[nodiscard]] Piece                           captured() const { return m_captured; }
+    [[nodiscard]] Piece                           moved() const { return m_moved; }
     [[nodiscard]] Color                           side_to_move() const { return m_color; }
     [[nodiscard]] int                             halfmove_clock() const { return m_halfmove_clock; }
     [[nodiscard]] int                             full_move_clock() const { return m_fullmove_clock; }
@@ -78,7 +83,6 @@ struct Position
     friend std::ostream&      operator<<(std::ostream& os, const Position& pos) { return os << pos.to_string(); }
     bool                      from_fen(std::string_view fen);
     [[nodiscard]] std::string to_fen() const;
-    [[nodiscard]] std::string to_algebraic() const;
 
     [[nodiscard]] unsigned wdl_probe() const;
     [[nodiscard]] unsigned dtz_probe() const;
@@ -86,7 +90,8 @@ struct Position
     [[nodiscard]] int see(Move move) const;
 
     static bool is_repetition(const std::span<Position>& positions);
-    static std::string to_pgn(std::span<Position> positions, const PGNInfo& info);
+    static bool is_repetition(const std::span<Position>& positions, Move move);
+
 
 
 private:
@@ -104,12 +109,15 @@ private:
     Square m_ep_square{};
     Piece  m_captured{};
     Move   m_move{};
-    // 6 available
+    Piece  m_moved{};
+    //5 available
 
     // recomputed
     EnumArray<Color, Bitboard> m_blockers{};
     EnumArray<Color, Bitboard> m_check_mask{};
 };
+
+
 
 template <typename... Ts>
 Bitboard Position::occupancy(const PieceType first, const Ts... rest) const
@@ -268,7 +276,6 @@ inline void Position::init_zobrist()
     m_hash.flip_castling_rights(castling_rights().mask());
 }
 
-
 inline bool Position::from_fen(const std::string_view fen)
 {
     std::memset(this, 0, sizeof(*this));
@@ -415,30 +422,6 @@ inline std::string Position::to_string() const
 }
 
 
-inline std::string Position::to_pgn(const std::span<Position> positions, const PGNInfo& info)
-{
-    std::ostringstream oss;
-
-    oss << "[Event \"" << info.event << "\"]\n";
-    oss << "[Site \"" << info.site << "\"]\n";
-    oss << "[Date \"" << info.date.to_string() << "\"]\n";
-    oss << "[Round \"" << info.round << "\"]\n";
-    oss << "[White \"" << info.White << "\"]\n";
-    oss << "[Black \"" << info.Black << "\"]\n";
-    oss << "[Result \"" << info.result << "\"]\n\n";
-
-    for (size_t i = 0; i < positions.size() - 1; ++i)
-    {
-        if (i % 2 == 0)
-        {
-            oss << (i / 2 + 1) << ". ";
-        }
-        oss << positions[i + 1].move().to_algebraic(positions[i]) << " ";
-    }
-
-    return oss.str();
-}
-
 template <Color c>
 bool Position::is_legal(const Move move) const
 {
@@ -516,12 +499,16 @@ inline void Position::do_move(const Move move)
     m_ep_square      = NO_SQUARE;
     m_captured       = NO_PIECE;
     m_move           = move;
+    m_moved = NO_PIECE;
 
     if (move == Move::null())
     {
         update();
         return;
     }
+
+    m_moved = piece_at(move.from_sq());
+
 
     const Square from = move.from_sq();
     const Square to   = move.to_sq();
@@ -626,6 +613,33 @@ inline bool Position::is_repetition(const std::span<Position>& positions)
     return false;
 }
 
+inline bool Position::is_repetition(const std::span<Position>& positions, const Move move)
+{
+    auto last = positions.back();
+    last.do_move(move);
+    if (last.halfmove_clock() >= 100)
+    {
+        return true;
+    }
+    const hash_t target = last.hash();
+    int          hits   = 1;
+    size_t       idx    = positions.size() - 1;
+    while (idx > 0)
+    {
+        const Position& pos = positions[idx--];
+        if (pos.halfmove_clock() == 0 && idx != 0)
+        {
+            return false;
+        }
+        hits += pos.hash() == target;
+        if (hits >= 3)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 inline unsigned Position::wdl_probe() const
 {
     size_t ep_sq = ep_square() == NO_SQUARE ? 0 : ep_square().index() + 1;
@@ -644,33 +658,6 @@ inline unsigned Position::dtz_probe() const
                          castling_rights().mask(), ep_sq, side_to_move() == WHITE, nullptr);
 }
 
-inline std::optional<Move> move_from_uci(const std::string_view& uci, const Position& pos)
-{
-    const auto incomplete = Move::from_uci(uci);
-    if (!incomplete)
-        return std::nullopt;
-    if (pos.piece_type_at(incomplete->from_sq()) == PAWN && pos.ep_square() == incomplete->to_sq())
-    {
-        return Move::make<EN_PASSANT>(incomplete->from_sq(), incomplete->to_sq());
-    }
-    Piece pc = pos.piece_at(incomplete->from_sq());
-    if (pc.type() == KING)
-    {
-        CastlingRights copy = pos.castling_rights();
-        while (!copy.empty())
-        {
-            auto type = CastlingType{bit::get_lsb(copy.mask())};
-            if (const auto [k_from, k_to] = type.king_move();
-                pc.color() == type.color() &&
-                incomplete->from_sq() == k_from && incomplete->to_sq() == k_to)
-            {
-                return Move::make<CASTLING>(k_from, k_to, type);
-            }
-            copy.remove(type);
-        }
-    }
-    return incomplete;
-}
 
 inline int Position::see(const Move move) const
 {
@@ -711,18 +698,21 @@ inline int Position::see(const Move move) const
     };
 
     const Piece captured = piece_at(is_ep ? to - up : to);
-    assert(captured);
 
     capture(from);
-    gains.push_back(captured.piece_value());
-    int balance = captured.piece_value();
+    gains.push_back(captured ? captured.piece_value() : 0);
+    int balance = captured ? captured.piece_value() : 0;
 
     Color     side = them;
     PieceType cur  = piece_type_at(from);
+    bool king_can_capture = false;
+
 
     while (true)
     {
         const Bitboard attacking = attackers & occupancy(side);
+        king_can_capture = (attackers & occupancy(~side)) == Bitboard::empty();
+
 
         if (!attacking)
             break;
@@ -739,6 +729,10 @@ inline int Position::see(const Move move) const
                 chosen_sq = Square{bb.get_lsb()};
                 break;
             }
+        }
+        if (chosen_pt == KING && !king_can_capture)
+        {
+            break;
         }
 
         capture(chosen_sq);

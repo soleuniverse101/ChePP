@@ -364,7 +364,7 @@ constexpr Square H8{FILE_H, RANK_8};
 
 constexpr Square NO_SQUARE{64};
 
-static constexpr std::array<std::string_view, 7> piece_type_repr = {"P", "N", "B", "R", "Q", "K", "-"};
+static constexpr std::array<std::string_view, 7> piece_type_repr = {"p", "n", "b", "r", "q", "k", "-"};
 
 struct PieceType : EnumBase<PieceType, uint8_t, 6, piece_type_repr, true, true>
 {
@@ -541,6 +541,181 @@ constexpr CastlingType WHITE_QUEENSIDE{WHITE, QUEENSIDE};
 constexpr CastlingType BLACK_QUEENSIDE{BLACK, QUEENSIDE};
 constexpr CastlingType NO_CASTLING_TYPE{4};
 
+struct Move;
+
+struct CastlingRights
+{
+    using MaskT                        = uint8_t;
+    static constexpr std::size_t NComb = 16;
+
+    constexpr CastlingRights() : m_mask(0) {}
+
+    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
+    constexpr explicit CastlingRights(const int_type mask) : m_mask(std::min(mask, static_cast<int_type>(0b1111)))
+    {
+    }
+
+    constexpr CastlingRights(const std::initializer_list<CastlingType> types) : m_mask(0)
+    {
+        for (auto t : types)
+            m_mask |= t.mask();
+    }
+
+    constexpr explicit CastlingRights(const Color c)
+        : CastlingRights{CastlingType{c, KINGSIDE}, CastlingType{c, QUEENSIDE}}
+    {
+    }
+
+    static constexpr std::array<std::string_view, NComb> repr = {"-", "K",  "Q",  "KQ",  "k",  "Kk",  "Qk",  "KQk",
+                                                                 "q", "Kq", "Qq", "KQq", "kq", "Kkq", "Qkq", "KQkq"};
+
+    [[nodiscard]] std::string_view to_string() const { return repr.at(m_mask); }
+
+    friend std::ostream& operator<<(std::ostream& os, const CastlingRights& cr)
+    {
+        os << cr.to_string();
+        return os;
+    }
+
+    static constexpr CastlingRights all() { return CastlingRights{0b1111}; }
+    static constexpr CastlingRights none() { return CastlingRights{0}; }
+
+    friend constexpr bool operator==(const CastlingRights& cr1, const CastlingRights& cr2)
+    {
+        return cr1.m_mask == cr2.m_mask;
+    }
+    friend constexpr bool operator!=(const CastlingRights& cr1, const CastlingRights& cr2)
+    {
+        return cr1.m_mask != cr2.m_mask;
+    }
+
+    [[nodiscard]] constexpr bool has(const CastlingType t) const { return m_mask & t.mask(); }
+
+    [[nodiscard]] constexpr bool has_any() const { return m_mask; }
+    [[nodiscard]] constexpr bool has_any_color(const Color c) const { return m_mask & CastlingRights(c).m_mask; }
+
+    constexpr void add(const CastlingType t) { m_mask |= t.mask(); }
+    constexpr void remove(const CastlingType t) { m_mask &= ~t.mask(); }
+
+    constexpr void remove(const CastlingRights other) { m_mask &= ~other.m_mask; }
+    constexpr void keep(const CastlingRights other) { m_mask &= other.m_mask; }
+
+    [[nodiscard]] constexpr bool empty() const { return m_mask == 0; }
+
+    [[nodiscard]] constexpr MaskT mask() const { return m_mask; }
+
+    static const EnumArray<Square, CastlingRights> lost_table;
+
+    [[nodiscard]] constexpr CastlingRights lost_from_move(Move move) const;
+
+    [[nodiscard]] static constexpr std::optional<CastlingRights> from_string(const std::string_view& sv)
+    {
+        const auto it = std::ranges::find(repr, sv);
+        return it == repr.end() ? std::nullopt : std::optional{CastlingRights(std::distance(repr.begin(), it))};
+    }
+
+
+    MaskT m_mask;
+};
+
+constexpr EnumArray<Square, CastlingRights> CastlingRights::lost_table = []
+{
+    EnumArray<Square, CastlingRights> t{};
+    for (Square sq = A1; sq <= H8; ++sq)
+    {
+        t.at(sq) = sq == E1   ? CastlingRights{WHITE_KINGSIDE, WHITE_QUEENSIDE}
+                   : sq == H1 ? CastlingRights{WHITE_KINGSIDE}
+                   : sq == A1 ? CastlingRights{WHITE_QUEENSIDE}
+                   : sq == E8 ? CastlingRights{BLACK_KINGSIDE, BLACK_QUEENSIDE}
+                   : sq == H8 ? CastlingRights{BLACK_KINGSIDE}
+                   : sq == A8 ? CastlingRights{BLACK_QUEENSIDE}
+                              : CastlingRights{};
+    }
+    return t;
+}();
+
+constexpr CastlingRights CASTLING_NONE{NO_CASTLING_TYPE};
+
+constexpr CastlingRights CASTLING_K{WHITE_KINGSIDE};
+constexpr CastlingRights CASTLING_Q{WHITE_QUEENSIDE};
+constexpr CastlingRights CASTLING_k{BLACK_KINGSIDE};
+constexpr CastlingRights CASTLING_q{BLACK_QUEENSIDE};
+
+constexpr CastlingRights CASTLING_KQ{WHITE_KINGSIDE, WHITE_QUEENSIDE};
+constexpr CastlingRights CASTLING_Kk{WHITE_KINGSIDE, BLACK_KINGSIDE};
+constexpr CastlingRights CASTLING_Kq{WHITE_KINGSIDE, BLACK_QUEENSIDE};
+constexpr CastlingRights CASTLING_Qk{WHITE_QUEENSIDE, BLACK_KINGSIDE};
+constexpr CastlingRights CASTLING_Qq{WHITE_QUEENSIDE, BLACK_QUEENSIDE};
+constexpr CastlingRights CASTLING_kq{BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+constexpr CastlingRights CASTLING_KQk{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE};
+constexpr CastlingRights CASTLING_KQq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_QUEENSIDE};
+constexpr CastlingRights CASTLING_Kkq{WHITE_KINGSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+constexpr CastlingRights CASTLING_Qkq{WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+constexpr CastlingRights CASTLING_KQkq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
+
+
+constexpr std::array<std::string_view, 4> result_repr = {"1-0", "0-1", "1/2-1/2", "*"};
+struct Result : EnumBase<Result, int, 3, result_repr>
+{
+    using base = EnumBase;
+    using base::EnumBase;
+
+    explicit constexpr Result(const Color c) : EnumBase(c.value())
+    {}
+};
+
+constexpr Result WIN_WHITE{0};
+constexpr Result WIN_BLACK{1};
+constexpr Result DRAW{2};
+constexpr Result NO_RESULT{3};
+
+namespace bit
+{
+    template <std::unsigned_integral T>
+    constexpr int popcount(const T x) noexcept
+    {
+        return std::popcount(x);
+    }
+
+    template <std::unsigned_integral T>
+    constexpr int get_lsb(const T bb) noexcept
+    {
+        return std::countr_zero(bb);
+    }
+
+    template <std::unsigned_integral T>
+    constexpr int get_msb(const T bb) noexcept
+    {
+        return std::numeric_limits<T>::digits - 1 - std::countl_zero(bb);
+    }
+
+    template <std::unsigned_integral T>
+    constexpr int pop_lsb(T& bb) noexcept
+    {
+        int n = std::countr_zero(bb);
+        bb &= ~(static_cast<T>(1) << n);
+        return n;
+    }
+
+    template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
+    constexpr T shift_left(const T value, const unsigned shift)
+    {
+        // assert(shift < sizeof(T) * 8 && "shift exceeds its bit width");
+        return value << shift;
+    }
+
+    template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
+    constexpr T shift_right(const T value, const unsigned shift)
+    {
+        // assert(shift < sizeof(T) * 8 && "shift exceeds its bit width");
+        return value >> shift;
+    }
+
+} // namespace bit
+
+
 enum move_type_t : uint16_t
 {
     NORMAL     = 0,
@@ -549,13 +724,12 @@ enum move_type_t : uint16_t
     CASTLING   = 3 << 14
 };
 
-
 // a move is encoded as an 16 bit unsigned int
 // 0-5 bit : to square (square 0 to 63)
 // 6-11 bit : from square (square 0 to 63)
 // 12-13 bit : promotion piece type (shifted by KNIGHT which is the lowest promotion to fit) or
 // castle type 14-15: promotion (1), en passant (2), castling (3)
-class Move
+struct Move
 {
   public:
     Move() : m_data(0) {}
@@ -627,131 +801,77 @@ class Move
         return s;
     }
 
-    static constexpr std::optional<Move> from_uci(const std::string_view& sv);
+    struct UciInfo
+    {
+        const EnumArray<Square, Piece>& pieces;
+        Square ep_square;
+        CastlingRights castling_rights;
+    };
+
+    static constexpr std::optional<Move> from_uci(const std::string_view& sv, const UciInfo& info);
+
 
     friend std::ostream& operator<<(std::ostream& os, const Move mv) { return os << mv.to_string(); }
 
-    std::string to_algebraic(const Position& pos) const;
+
+    struct AlgebraicInfo
+    {
+        Piece piece;
+        bool needs_rank;
+        bool needs_file;
+        bool is_capture;
+        bool is_check;
+        bool is_mate;
+    };
+
+    std::string to_algebraic(const AlgebraicInfo& info) const
+    {
+        if (*this == none() || *this == null())
+            return "--";
+
+        if (type_of() == CASTLING)
+        {
+            return castling_type().side() == KINGSIDE ? "O-O" : "O-O-O";
+        }
+
+        std::ostringstream oss;
+
+        if (info.piece.type() != PAWN)
+            oss << info.piece.type();
+
+        if (info.needs_file)
+            oss << from_sq().file();
+        if (info.needs_rank)
+            oss << from_sq().rank();
+
+        if (info.is_capture)
+        {
+            if (info.piece.type() == PAWN && !info.needs_file)
+                oss << from_sq().file();
+            oss << "x";
+        }
+
+        oss << to_sq();
+
+        if (type_of() == PROMOTION)
+        {
+            oss << "=" << Piece{info.piece.color(), promotion_type()}.type();
+        }
+
+
+        if (info.is_check)
+        {
+            oss << (info.is_mate ? "#" : "+");
+        }
+
+
+        return oss.str();
+    }
 
     std::uint16_t m_data;
 };
 
-struct CastlingRights
-{
-    using MaskT                        = uint8_t;
-    static constexpr std::size_t NComb = 16;
-
-    constexpr CastlingRights() : m_mask(0) {}
-
-    template <typename int_type, std::enable_if_t<std::is_integral_v<int_type>, int> = 0>
-    constexpr explicit CastlingRights(const int_type mask) : m_mask(std::min(mask, static_cast<int_type>(0b1111)))
-    {
-    }
-
-    constexpr CastlingRights(const std::initializer_list<CastlingType> types) : m_mask(0)
-    {
-        for (auto t : types)
-            m_mask |= t.mask();
-    }
-
-    constexpr explicit CastlingRights(const Color c)
-        : CastlingRights{CastlingType{c, KINGSIDE}, CastlingType{c, QUEENSIDE}}
-    {
-    }
-
-    static constexpr std::array<std::string_view, NComb> repr = {"-", "K",  "Q",  "KQ",  "k",  "Kk",  "Qk",  "KQk",
-                                                                 "q", "Kq", "Qq", "KQq", "kq", "Kkq", "Qkq", "KQkq"};
-
-    [[nodiscard]] std::string_view to_string() const { return repr.at(m_mask); }
-
-    friend std::ostream& operator<<(std::ostream& os, const CastlingRights& cr)
-    {
-        os << cr.to_string();
-        return os;
-    }
-
-    static constexpr CastlingRights all() { return CastlingRights{0b1111}; }
-    static constexpr CastlingRights none() { return CastlingRights{0}; }
-
-    friend constexpr bool operator==(const CastlingRights& cr1, const CastlingRights& cr2)
-    {
-        return cr1.m_mask == cr2.m_mask;
-    }
-    friend constexpr bool operator!=(const CastlingRights& cr1, const CastlingRights& cr2)
-    {
-        return cr1.m_mask != cr2.m_mask;
-    }
-
-    [[nodiscard]] constexpr bool has(const CastlingType t) const { return m_mask & t.mask(); }
-
-    [[nodiscard]] constexpr bool has_any() const { return m_mask; }
-    [[nodiscard]] constexpr bool has_any_color(const Color c) const { return m_mask & CastlingRights(c).m_mask; }
-
-    constexpr void add(const CastlingType t) { m_mask |= t.mask(); }
-    constexpr void remove(const CastlingType t) { m_mask &= ~t.mask(); }
-
-    constexpr void remove(const CastlingRights other) { m_mask &= ~other.m_mask; }
-    constexpr void keep(const CastlingRights other) { m_mask &= other.m_mask; }
-
-    [[nodiscard]] constexpr bool empty() const { return m_mask == 0; }
-
-    [[nodiscard]] constexpr MaskT mask() const { return m_mask; }
-
-    static const EnumArray<Square, CastlingRights> lost_table;
-
-    [[nodiscard]] constexpr CastlingRights lost_from_move(const Move move) const
-    {
-        return CastlingRights{(lost_table[move.from_sq()].m_mask | lost_table[move.to_sq()].m_mask) & m_mask};
-    }
-
-    [[nodiscard]] static constexpr std::optional<CastlingRights> from_string(const std::string_view& sv)
-    {
-        const auto it = std::ranges::find(repr, sv);
-        return it == repr.end() ? std::nullopt : std::optional{CastlingRights(std::distance(repr.begin(), it))};
-    }
-
-
-    MaskT m_mask;
-};
-
-constexpr EnumArray<Square, CastlingRights> CastlingRights::lost_table = []
-{
-    EnumArray<Square, CastlingRights> t{};
-    for (Square sq = A1; sq <= H8; ++sq)
-    {
-        t.at(sq) = sq == E1   ? CastlingRights{WHITE_KINGSIDE, WHITE_QUEENSIDE}
-                   : sq == H1 ? CastlingRights{WHITE_KINGSIDE}
-                   : sq == A1 ? CastlingRights{WHITE_QUEENSIDE}
-                   : sq == E8 ? CastlingRights{BLACK_KINGSIDE, BLACK_QUEENSIDE}
-                   : sq == H8 ? CastlingRights{BLACK_KINGSIDE}
-                   : sq == A8 ? CastlingRights{BLACK_QUEENSIDE}
-                              : CastlingRights{};
-    }
-    return t;
-}();
-
-constexpr CastlingRights CASTLING_NONE{NO_CASTLING_TYPE};
-
-constexpr CastlingRights CASTLING_K{WHITE_KINGSIDE};
-constexpr CastlingRights CASTLING_Q{WHITE_QUEENSIDE};
-constexpr CastlingRights CASTLING_k{BLACK_KINGSIDE};
-constexpr CastlingRights CASTLING_q{BLACK_QUEENSIDE};
-
-constexpr CastlingRights CASTLING_KQ{WHITE_KINGSIDE, WHITE_QUEENSIDE};
-constexpr CastlingRights CASTLING_Kk{WHITE_KINGSIDE, BLACK_KINGSIDE};
-constexpr CastlingRights CASTLING_Kq{WHITE_KINGSIDE, BLACK_QUEENSIDE};
-constexpr CastlingRights CASTLING_Qk{WHITE_QUEENSIDE, BLACK_KINGSIDE};
-constexpr CastlingRights CASTLING_Qq{WHITE_QUEENSIDE, BLACK_QUEENSIDE};
-constexpr CastlingRights CASTLING_kq{BLACK_KINGSIDE, BLACK_QUEENSIDE};
-
-constexpr CastlingRights CASTLING_KQk{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE};
-constexpr CastlingRights CASTLING_KQq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_QUEENSIDE};
-constexpr CastlingRights CASTLING_Kkq{WHITE_KINGSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
-constexpr CastlingRights CASTLING_Qkq{WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
-
-constexpr CastlingRights CASTLING_KQkq{WHITE_KINGSIDE, WHITE_QUEENSIDE, BLACK_KINGSIDE, BLACK_QUEENSIDE};
-
-constexpr std::optional<Move> Move::from_uci(const std::string_view& sv)
+constexpr std::optional<Move> Move::from_uci(const std::string_view& sv, const UciInfo& info)
 {
     if (!(sv.size() == 4 || sv.size() == 5))
         return std::nullopt;
@@ -770,64 +890,34 @@ constexpr std::optional<Move> Move::from_uci(const std::string_view& sv)
         return make<PROMOTION>(*from, *to, *pt);
     }
 
+    if (info.pieces.at(*from).type() == PAWN && info.ep_square == *to)
+    {
+        return make<EN_PASSANT>(*from, *to);
+    }
+
+    if (info.pieces.at(*from).type() == KING)
+    {
+        CastlingRights copy = info.castling_rights;
+        while (!copy.empty())
+        {
+            auto type = CastlingType{bit::get_lsb(copy.mask())};
+            if (const auto [k_from, k_to] = type.king_move();
+            info.pieces.at(*from).color() == type.color() &&
+                *from == k_from && *to == k_to)
+            {
+                return make<CASTLING>(k_from, k_to, type);
+            }
+            copy.remove(type);
+        }
+    }
+
     return make<NORMAL>(*from, *to);
 }
 
-constexpr std::array<std::string_view, 4> result_repr = {"1-0", "0-1", "1/2-1/2", "*"};
-struct Result : EnumBase<Result, int, 3, result_repr>
+[[nodiscard]] constexpr CastlingRights CastlingRights::lost_from_move(Move move) const
 {
-    using base = EnumBase;
-    using base::EnumBase;
-};
-
-constexpr Result WIN_WHITE{0};
-constexpr Result WIN_BLACK{1};
-constexpr Result DRAW{2};
-constexpr Result NO_RESULT{3};
-
-namespace bit
-{
-    template <std::unsigned_integral T>
-    constexpr int popcount(const T x) noexcept
-    {
-        return std::popcount(x);
-    }
-
-    template <std::unsigned_integral T>
-    constexpr int get_lsb(const T bb) noexcept
-    {
-        return std::countr_zero(bb);
-    }
-
-    template <std::unsigned_integral T>
-    constexpr int get_msb(const T bb) noexcept
-    {
-        return std::numeric_limits<T>::digits - 1 - std::countl_zero(bb);
-    }
-
-    template <std::unsigned_integral T>
-    constexpr int pop_lsb(T& bb) noexcept
-    {
-        int n = std::countr_zero(bb);
-        bb &= ~(static_cast<T>(1) << n);
-        return n;
-    }
-
-    template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
-    constexpr T shift_left(const T value, const unsigned shift)
-    {
-        // assert(shift < sizeof(T) * 8 && "shift exceeds its bit width");
-        return value << shift;
-    }
-
-    template <typename T, std::enable_if_t<std::is_unsigned_v<T>, int> = 0>
-    constexpr T shift_right(const T value, const unsigned shift)
-    {
-        // assert(shift < sizeof(T) * 8 && "shift exceeds its bit width");
-        return value >> shift;
-    }
-
-} // namespace bit
+    return CastlingRights{(lost_table[move.from_sq()].m_mask | lost_table[move.to_sq()].m_mask) & m_mask};
+}
 
 constexpr int MAX_PLY = 255;
 
@@ -859,11 +949,10 @@ constexpr int mated_in(const int ply) noexcept
 
 struct SearchStackNode
 {
-    Move move{Move::none()};
     Move killer1{Move::none()};
     Move killer2{Move::none()};
-    EnumArray<Square, EnumArray<Square, int>> history{};
 };
+
 
 
 struct Date {
@@ -893,19 +982,6 @@ struct Date {
     }
 };
 
-
-
-
-
-struct PGNInfo {
-    std::string event = "Engine Benchmark";
-    std::string site  = "?";
-    Date date{};
-    int round = 1;
-    std::string White = "WhiteEngine";
-    std::string Black = "BlackEngine";
-    Result      result = NO_RESULT;
-};
 
 inline constexpr auto start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 

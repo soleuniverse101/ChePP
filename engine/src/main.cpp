@@ -71,7 +71,7 @@ void print_accumulator(accumulator_t<nnue_t::s_accumulator_size>& acc, color_t c
 int main() {
     g_tt.init(512);
 
-    UCIEngine engine;
+    UCIEngine engine{};
     engine.loop();
 
     return 0;

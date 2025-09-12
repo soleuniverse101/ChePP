@@ -283,7 +283,7 @@ inline MoveList filter_tactical(const Position& pos, const MoveList& list)
 {
     MoveList ret;
     std::ranges::copy_if(list, std::back_inserter(ret), [&](const ScoredMove& mv) {
-        return pos.is_occupied(mv.move.to_sq()) || mv.move.type_of() == EN_PASSANT || mv.move.type_of() == PROMOTION;
+        return pos.is_occupied(mv.move.to_sq()) || mv.move.type_of() == EN_PASSANT || mv.move.type_of() == PROMOTION || attacks(pos.piece_type_at(mv.move.from_sq()), mv.move.to_sq(), pos.occupancy() & ~Bitboard(mv.move.from_sq()), pos.side_to_move()).is_set(pos.ksq(~pos.side_to_move()));
     });
     return ret;
 }
