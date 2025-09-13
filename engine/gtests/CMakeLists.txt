@@ -6,6 +6,9 @@ FetchContent_Declare(
         GIT_TAG release-1.15.0
 )
 
+FetchContent_MakeAvailable(googletest)
+enable_testing()
+
 set (TEST_SOURCES
         perft_tests.cpp
         repetitions_test.cpp
