@@ -20,7 +20,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(highway)
 
 # NNUE weights, embed directly into he binary, avoids any relative path issue at runtime
-set(NETWORK_BIN ${CMAKE_CURRENT_SOURCE_DIR}/resources/network.net)
+set(NETWORK_BIN ${CMAKE_CURRENT_SOURCE_DIR}/resources/latest.net)
 set(NETWORK_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/ChePP/engine/network_net.h)
 set(NETWORK_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/network_net.cpp)
 set(NETWORK_CFG ${CMAKE_CURRENT_SOURCE_DIR}/resources/format.txt)

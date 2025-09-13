@@ -9,22 +9,24 @@
 #include <cstring>
 #include <memory>
 #include <ostream>
+#include <ranges>
 #include <src/tbprobe.h>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
-
 
 struct Position
 {
     Position() = default;
-    Position(const Position& prev, const Move move) : Position(prev)
-    {
-        do_move(move);
-    }
+    Position(const Position& prev, const Move move) : Position(prev) { do_move(move); }
+
+
+    void init_zobrist();
 
 
     [[nodiscard]] Square                          ep_square() const { return m_ep_square; }
     [[nodiscard]] Piece                           captured() const { return m_captured; }
+    [[nodiscard]] Move                            move() const { return m_move; }
     [[nodiscard]] Piece                           moved() const { return m_moved; }
     [[nodiscard]] Color                           side_to_move() const { return m_color; }
     [[nodiscard]] int                             halfmove_clock() const { return m_halfmove_clock; }
@@ -32,85 +34,80 @@ struct Position
     [[nodiscard]] CastlingRights                  castling_rights() const { return m_crs; }
     [[nodiscard]] hash_t                          hash() const { return m_hash.value(); }
     [[nodiscard]] const EnumArray<Square, Piece>& pieces() const { return m_pieces; }
-    [[nodiscard]] EnumArray<Square, Piece>&       pieces() { return m_pieces; }
-    [[nodiscard]] Piece                           piece_at(Square sq) const { return m_pieces.at(sq); }
+    [[nodiscard]] Piece                           piece_at(const Square sq) const { return m_pieces.at(sq); }
     [[nodiscard]] PieceType                       piece_type_at(const Square sq) const { return piece_at(sq).type(); }
     [[nodiscard]] Color                           color_at(const Square sq) const { return piece_at(sq).color(); }
-    [[nodiscard]] Square                          ksq(Color c) const { return m_ksq.at(c); }
-    [[nodiscard]] Bitboard                        occupancy() const { return m_global_occupancy; }
-    [[nodiscard]] Bitboard                        occupancy(const Color c) const { return m_color_occupancy.at(c); }
-    [[nodiscard]] Bitboard                        occupancy(const Color c, const PieceType p) const
-    {
-        return m_pieces_type_occupancy.at(p) & m_color_occupancy.at(c);
-    }
-    [[nodiscard]] Bitboard occupancy(const PieceType p) const { return m_pieces_type_occupancy.at(p); }
+    [[nodiscard]] Square                          ksq(const Color c) const { return m_ksq.at(c); }
+
     [[nodiscard]] Bitboard checkers(const Color c) const { return m_check_mask.at(c) & occupancy(~c); }
     [[nodiscard]] Bitboard blockers(const Color c) const { return m_blockers.at(c); }
     [[nodiscard]] Bitboard check_mask(const Color c) const { return m_check_mask.at(c); }
-    [[nodiscard]] Move     move() const { return m_move; }
-    [[nodiscard]] bool     is_occupied(const Square sq) const { return piece_at(sq) != NO_PIECE; }
+
+
+    [[nodiscard]] Bitboard occupancy() const { return m_global_occupancy; }
+    [[nodiscard]] Bitboard occupancy(const Color c) const { return m_color_occupancy.at(c); }
+    [[nodiscard]] Bitboard occupancy(const PieceType p) const { return m_pieces_type_occupancy.at(p); }
+    [[nodiscard]] Bitboard occupancy(const Color c, const PieceType p) const { return occupancy(p) & occupancy(c); }
     template <class... Ts>
     [[nodiscard]] Bitboard occupancy(Color c, PieceType first, const Ts... rest) const;
     template <class... Ts>
     [[nodiscard]] Bitboard occupancy(PieceType first, const Ts... rest) const;
     [[nodiscard]] Bitboard occupancy(Color c, std::initializer_list<PieceType> types) const;
     [[nodiscard]] Bitboard occupancy(std::initializer_list<PieceType> types) const;
+    [[nodiscard]] bool     is_occupied(const Square sq) const { return m_pieces.at(sq) != NO_PIECE; }
 
-    void crs_remove_rights(const CastlingRights lost) { m_crs.remove(lost); }
 
     [[nodiscard]] Bitboard attacking_sq(Square sq, Bitboard occ) const;
     [[nodiscard]] Bitboard attacking_sq(Square sq) const;
     [[nodiscard]] bool     is_attacking_sq(Square sq, Color c) const;
+
 
     template <Color c>
     [[nodiscard]] bool is_legal(Move move) const;
     [[nodiscard]] bool is_legal(Move move) const;
     void               do_move(Move move);
 
+
     template <PieceType pt>
     void update_checkers_and_blockers(Color c);
     void update_checkers_and_blockers(Color c);
     void update();
+
 
     void set_piece(Piece piece, Square sq);
     void set_piece(PieceType piece_type, Color color, Square sq);
     void remove_piece(Square sq);
     void move_piece(Square from, Square to);
 
-    void init_zobrist();
 
     [[nodiscard]] std::string to_string() const;
     friend std::ostream&      operator<<(std::ostream& os, const Position& pos) { return os << pos.to_string(); }
     bool                      from_fen(std::string_view fen);
     [[nodiscard]] std::string to_fen() const;
 
+
     [[nodiscard]] unsigned wdl_probe() const;
     [[nodiscard]] unsigned dtz_probe() const;
 
+
     [[nodiscard]] int see(Move move) const;
-
-    static bool is_repetition(const std::span<Position>& positions);
-    static bool is_repetition(const std::span<Position>& positions, Move move);
-
-
-
-private:
+  private:
     // copied
-    zobrist_t m_hash{};
+    zobrist_t                      m_hash{};
     EnumArray<Square, Piece>       m_pieces{};
     EnumArray<Color, Bitboard>     m_color_occupancy{};
     Bitboard                       m_global_occupancy{};
     EnumArray<PieceType, Bitboard> m_pieces_type_occupancy{};
     EnumArray<Color, Square>       m_ksq{};
     CastlingRights                 m_crs{};
-    Color m_color{};
-    uint8_t m_halfmove_clock = 0;
-    uint8_t m_fullmove_clock = 1;
-    Square m_ep_square{};
-    Piece  m_captured{};
-    Move   m_move{};
-    Piece  m_moved{};
-    //5 available
+    Color                          m_color{};
+    uint8_t                        m_halfmove_clock = 0;
+    uint8_t                        m_fullmove_clock = 1;
+    Square                         m_ep_square{};
+    Piece                          m_captured{};
+    Move                           m_move{};
+    Piece                          m_moved{};
+    // 5 available
 
     // recomputed
     EnumArray<Color, Bitboard> m_blockers{};
@@ -118,6 +115,38 @@ private:
 };
 
 
+
+inline void Position::init_zobrist()
+{
+    m_hash = zobrist_t{};
+    for (auto sq = A1; sq <= H8; sq = ++sq)
+    {
+        if (piece_at(sq) != NO_PIECE)
+            m_hash.flip_piece(piece_at(sq), sq);
+    }
+
+    if (ep_square() != NO_SQUARE)
+        m_hash.flip_ep(ep_square().file());
+
+    if (side_to_move() == BLACK)
+        m_hash.flip_color();
+
+    m_hash.flip_castling_rights(castling_rights().mask());
+}
+
+
+
+
+inline Bitboard Position::occupancy(const Color c, const std::initializer_list<PieceType> types) const
+{
+    return occupancy(types) & occupancy(c);
+}
+
+template <typename... Ts>
+[[nodiscard]] Bitboard Position::occupancy(const Color c, const PieceType first, const Ts... rest) const
+{
+    return occupancy(first, rest...) & occupancy(c);
+}
 
 template <typename... Ts>
 Bitboard Position::occupancy(const PieceType first, const Ts... rest) const
@@ -132,13 +161,6 @@ Bitboard Position::occupancy(const PieceType first, const Ts... rest) const
     }
 }
 
-
-template <typename... Ts>
-[[nodiscard]] Bitboard Position::occupancy(const Color c, const PieceType first, const Ts... rest) const
-{
-    return occupancy(first, rest...) & occupancy(c);
-}
-
 inline Bitboard Position::occupancy(const std::initializer_list<PieceType> types) const
 {
     Bitboard result{0};
@@ -149,10 +171,7 @@ inline Bitboard Position::occupancy(const std::initializer_list<PieceType> types
     return result;
 }
 
-inline Bitboard Position::occupancy(const Color c, const std::initializer_list<PieceType> types) const
-{
-    return occupancy(types) & occupancy(c);
-}
+
 
 inline Bitboard Position::attacking_sq(const Square sq, const Bitboard occ) const
 {
@@ -179,6 +198,9 @@ inline bool Position::is_attacking_sq(const Square sq, const Color c) const
            attacks<BISHOP>(sq, occupancy()) & occupancy(c, BISHOP, QUEEN) ||
            attacks<ROOK>(sq, occupancy()) & occupancy(c, ROOK, QUEEN);
 }
+
+
+
 
 template <PieceType pt>
 void Position::update_checkers_and_blockers(const Color c)
@@ -223,6 +245,8 @@ inline void Position::update()
     update_checkers_and_blockers(~side_to_move());
 }
 
+
+
 inline void Position::set_piece(const Piece piece, const Square sq)
 {
     assert(!is_occupied(sq));
@@ -230,7 +254,7 @@ inline void Position::set_piece(const Piece piece, const Square sq)
     const Color     c  = piece.color();
     m_pieces_type_occupancy.at(pt) |= Bitboard(sq);
     m_color_occupancy.at(c) |= Bitboard(sq);
-    pieces().at(sq) = piece;
+    m_pieces.at(sq) = piece;
 }
 
 inline void Position::set_piece(const PieceType piece_type, const Color color, const Square sq)
@@ -239,7 +263,7 @@ inline void Position::set_piece(const PieceType piece_type, const Color color, c
 
     m_pieces_type_occupancy.at(piece_type) |= Bitboard(sq);
     m_color_occupancy.at(color) |= Bitboard(sq);
-    pieces().at(sq) = Piece{color, piece_type};
+    m_pieces.at(sq) = Piece{color, piece_type};
 }
 
 inline void Position::remove_piece(const Square sq)
@@ -247,7 +271,7 @@ inline void Position::remove_piece(const Square sq)
     const Piece pc = piece_at(sq);
     m_pieces_type_occupancy.at(pc.type()) &= ~Bitboard(sq);
     m_color_occupancy.at(pc.color()) &= ~Bitboard(sq);
-    pieces().at(sq) = NO_PIECE;
+    m_pieces.at(sq) = NO_PIECE;
 }
 
 inline void Position::move_piece(const Square from, const Square to)
@@ -258,23 +282,6 @@ inline void Position::move_piece(const Square from, const Square to)
 }
 
 
-inline void Position::init_zobrist()
-{
-    m_hash = zobrist_t{};
-    for (auto sq = A1; sq <= H8; sq = ++sq)
-    {
-        if (piece_at(sq) != NO_PIECE)
-            m_hash.flip_piece(piece_at(sq), sq);
-    }
-
-    if (ep_square() != NO_SQUARE)
-        m_hash.flip_ep(ep_square().file());
-
-    if (side_to_move() == BLACK)
-        m_hash.flip_color();
-
-    m_hash.flip_castling_rights(castling_rights().mask());
-}
 
 inline bool Position::from_fen(const std::string_view fen)
 {
@@ -422,6 +429,8 @@ inline std::string Position::to_string() const
 }
 
 
+
+
 template <Color c>
 bool Position::is_legal(const Move move) const
 {
@@ -494,12 +503,12 @@ inline void Position::do_move(const Move move)
     }
 
     m_halfmove_clock++;
-    m_color          = ~m_color;
+    m_color = ~m_color;
     m_fullmove_clock += m_color == BLACK;
-    m_ep_square      = NO_SQUARE;
-    m_captured       = NO_PIECE;
-    m_move           = move;
-    m_moved = NO_PIECE;
+    m_ep_square = NO_SQUARE;
+    m_captured  = NO_PIECE;
+    m_move      = move;
+    m_moved     = NO_PIECE;
 
     if (move == Move::null())
     {
@@ -508,7 +517,6 @@ inline void Position::do_move(const Move move)
     }
 
     m_moved = piece_at(move.from_sq());
-
 
     const Square from = move.from_sq();
     const Square to   = move.to_sq();
@@ -588,57 +596,6 @@ inline void Position::do_move(const Move move)
 }
 
 
-inline bool Position::is_repetition(const std::span<Position>& positions)
-{
-    if (positions.back().halfmove_clock() >= 100)
-    {
-        return true;
-    }
-    const hash_t target = positions.back().hash();
-    int          hits   = 1;
-    size_t       idx    = positions.size() - 1;
-    while (idx > 0)
-    {
-        const Position& pos = positions[--idx];
-        if (pos.halfmove_clock() == 0 && idx != 0)
-        {
-            return false;
-        }
-        hits += pos.hash() == target;
-        if (hits >= 3)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-inline bool Position::is_repetition(const std::span<Position>& positions, const Move move)
-{
-    auto last = positions.back();
-    last.do_move(move);
-    if (last.halfmove_clock() >= 100)
-    {
-        return true;
-    }
-    const hash_t target = last.hash();
-    int          hits   = 1;
-    size_t       idx    = positions.size() - 1;
-    while (idx > 0)
-    {
-        const Position& pos = positions[idx--];
-        if (pos.halfmove_clock() == 0 && idx != 0)
-        {
-            return false;
-        }
-        hits += pos.hash() == target;
-        if (hits >= 3)
-        {
-            return true;
-        }
-    }
-    return false;
-}
 
 inline unsigned Position::wdl_probe() const
 {
@@ -657,6 +614,7 @@ inline unsigned Position::dtz_probe() const
                          occupancy(KNIGHT).value(), occupancy(PAWN).value(), static_cast<unsigned>(halfmove_clock()),
                          castling_rights().mask(), ep_sq, side_to_move() == WHITE, nullptr);
 }
+
 
 
 inline int Position::see(const Move move) const
@@ -703,16 +661,14 @@ inline int Position::see(const Move move) const
     gains.push_back(captured ? captured.piece_value() : 0);
     int balance = captured ? captured.piece_value() : 0;
 
-    Color     side = them;
-    PieceType cur  = piece_type_at(from);
-    bool king_can_capture = false;
-
+    Color     side             = them;
+    PieceType cur              = piece_type_at(from);
+    bool      king_can_capture = false;
 
     while (true)
     {
         const Bitboard attacking = attackers & occupancy(side);
-        king_can_capture = (attackers & occupancy(~side)) == Bitboard::empty();
-
+        king_can_capture         = (attackers & occupancy(~side)) == Bitboard::empty();
 
         if (!attacking)
             break;
@@ -749,5 +705,89 @@ inline int Position::see(const Move move) const
 
     return gains.empty() ? 0 : gains[0];
 }
+
+struct Positions
+{
+    using PosRef      = Position&;
+    using ConstPosRef = const Position&;
+
+    // Moves will not be visible through the positions span
+    // They are used internally to check for repetitions
+    // They do not count towards the ply limit
+    explicit Positions(const Position& pos, const std::span<Move> moves = {})
+    {
+        m_positions.reserve(moves.size() + MAX_PLY + 1);
+        m_hashes.reserve(MAX_PLY + 1);
+        m_positions.emplace_back(pos);
+        m_hashes.emplace_back(pos.hash(), 1);
+        for (const auto m : moves)
+        {
+            do_move(m);
+        }
+        m_start_size = m_positions.size();
+    }
+
+    explicit Positions(const std::string& fen, const std::span<Move> moves = {})
+    {
+        m_positions.reserve(moves.size() + MAX_PLY + 1);
+        m_hashes.reserve(MAX_PLY + 1);
+        Position pos;
+        pos.from_fen(fen);
+        m_positions.emplace_back(pos);
+        m_hashes.emplace_back(pos.hash(), 1);
+        for (const auto m : moves)
+        {
+            do_move(m);
+        }
+        m_start_size = m_positions.size();
+    }
+
+    [[nodiscard]] std::size_t ply() const { return m_positions.size() - m_start_size; }
+
+    std::span<Position>                     positions() { return {m_positions.data() + m_start_size - 1, ply() + 1}; }
+    [[nodiscard]] std::span<const Position> positions() const { return {m_positions.data() + m_start_size - 1, ply() + 1}; }
+
+    PosRef                    operator[](const std::size_t ply) { return positions()[ply]; }
+    [[nodiscard]] ConstPosRef operator[](const std::size_t ply) const { return positions()[ply]; }
+
+    PosRef                    operator()(const std::size_t ply) { return positions()[ply]; }
+    [[nodiscard]] ConstPosRef operator()(const std::size_t ply) const { return positions()[ply]; }
+
+    PosRef                    last() { return positions()[ply()]; }
+    [[nodiscard]] ConstPosRef last() const { return positions()[ply()]; }
+
+    void do_move(const Move move)
+    {
+        assert(ply() < MAX_PLY);
+
+        m_positions.emplace_back(m_positions.back(), move);
+
+        const auto view = m_hashes | std::views::reverse | std::views::take(last().halfmove_clock());
+        const auto it   = std::ranges::find(view, last().hash(), &std::pair<hash_t, int>::first);
+
+        int c = it != view.end() ? it->second + 1 : 1;
+        m_hashes.emplace_back(last().hash(), c);
+    }
+
+    void undo_move()
+    {
+        assert(ply() > 0);
+
+        m_hashes.pop_back();
+        m_positions.pop_back();
+    }
+
+    [[nodiscard]] bool is_repetition() const
+    {
+        if (last().halfmove_clock() >= 100) return true;
+        const auto view = m_hashes | std::views::reverse | std::views::take(last().halfmove_clock());
+        return std::ranges::any_of(view, [&](const auto h) { return h.second >= 3; });
+    }
+
+private:
+    std::vector<Position>               m_positions{};
+    std::vector<std::pair<hash_t, int>> m_hashes{};
+    std::size_t                         m_start_size{1};
+};
 
 #endif

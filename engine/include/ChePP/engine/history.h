@@ -41,9 +41,9 @@ struct HistoryManager {
         }
     }
 
-    void update_cont_hist(const std::span<Position>& positions,
+    void update_cont_hist(std::span<const Position> positions,
                           const MoveList& quiets, const Move best_move,
-                          const int depth, const int max_back = 2)
+                          const int depth, const int max_back = 2) const
     {
         const int end = positions.size() - 1;
         for (int back = 0; back < max_back; ++back) {
@@ -76,7 +76,7 @@ struct HistoryManager {
     }
 
 
-    [[nodiscard]] int get_cont_hist_bonus(const std::span<Position>& positions,
+    [[nodiscard]] int get_cont_hist_bonus(const std::span<const Position> positions,
                                           const Move move,
                                           const int max_back = 2) const
     {

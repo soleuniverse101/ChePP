@@ -33,6 +33,7 @@ struct tt_entry_t
     Move m_move;
     tt_bound_t m_bound;
     uint8_t m_generation;
+    uint8_t m_repetitions{0};
 };
 
 
@@ -63,6 +64,7 @@ struct tt_t
 
     [[nodiscard]] std::optional<tt_entry_t> probe(const hash_t hash) const
     {
+
         const tt_entry_t& cur = m_table[index(hash)];
         if (cur.m_hash != hash)
         {

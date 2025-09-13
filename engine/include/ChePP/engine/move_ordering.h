@@ -5,7 +5,7 @@
 #include "types.h"
 
 
-inline void score_moves(const std::span<Position> positions,
+inline void score_moves(const std::span<const Position> positions,
                         MoveList& list,
                         const Move prev_best,
                         const HistoryManager& history,

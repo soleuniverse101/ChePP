@@ -73,15 +73,10 @@ struct FeatureTransformer
     static bool needs_refresh(const Position& cur, const Position& prev, const Color view)
     {
         return prev.ksq(view) != cur.ksq(view);
-        int prev_king_square = prev.ksq(view).value() ^ 56;
-        const int prev_oK  = (7 * !(prev_king_square & 4)) ^ (56 * view.value()) ^ prev_king_square;
-        int king_square = cur.ksq(view).value() ^ 56;
-        const int oK  = (7 * !(king_square & 4)) ^ (56 * view.value()) ^ king_square;
-
-        return king_square_index(prev_oK) != king_square_index(oK);
     }
 
-    static std::pair<RetT, RetT> get_features(const Position& cur, const Position& prev, const Color view, const bool refresh)
+    static std::pair<RetT, RetT> get_features(const Position& cur, const Position& prev, const Color view,
+                                              const bool refresh)
 
     {
         RetT add_v;
@@ -106,50 +101,40 @@ struct FeatureTransformer
 
             for (const auto c : {WHITE, BLACK})
             {
-                color_diff.at(c).for_each_square(
-                    [&](const Square& sq)
-                    {
-                        if (prev.occupancy(c).is_set(sq))
-                        {
-                            rem(sq, prev.piece_at(sq));
-                        }
-                        else
-                        {
-                            add(sq, cur.piece_at(sq));
-                        }
-                    });
+                color_diff.at(c).for_each_square( [&](const Square& sq){
+                    if (prev.occupancy(c).is_set(sq)) rem(sq, prev.piece_at(sq));
+                    else add(sq, cur.piece_at(sq));
+                });
             }
         }
         return {add_v, rem_v};
     }
 
   private:
-
-    static int king_square_index(int relative_king_square) {
-        constexpr int indices[64] {
-            -1, -1, -1, -1, 14, 14, 15, 15,    //
-            -1, -1, -1, -1, 14, 14, 15, 15,    //
-            -1, -1, -1, -1, 12, 12, 13, 13,    //
-            -1, -1, -1, -1, 12, 12, 13, 13,    //
-            -1, -1, -1, -1, 8,  9,  10, 11,    //
-            -1, -1, -1, -1, 8,  9,  10, 11,    //
-            -1, -1, -1, -1, 4,  5,  6,  7,     //
-            -1, -1, -1, -1, 0,  1,  2,  3,     //
+    static int king_square_index(int relative_king_square)
+    {
+        constexpr int indices[64]{
+            -1, -1, -1, -1, 14, 14, 15, 15, //
+            -1, -1, -1, -1, 14, 14, 15, 15, //
+            -1, -1, -1, -1, 12, 12, 13, 13, //
+            -1, -1, -1, -1, 12, 12, 13, 13, //
+            -1, -1, -1, -1, 8,  9,  10, 11, //
+            -1, -1, -1, -1, 8,  9,  10, 11, //
+            -1, -1, -1, -1, 4,  5,  6,  7,  //
+            -1, -1, -1, -1, 0,  1,  2,  3,  //
         };
 
         return indices[relative_king_square];
     }
 
-    static int get_index(                     Color  view,                      Square king_sq,
-Square piece_sq,
-                     Piece  piece
-) {
+    static int get_index(Color view, Square king_sq, Square piece_sq, Piece piece)
+    {
 
         const PieceType piece_type  = piece.type();
         const Color     piece_color = piece.color();
 
         int piece_square = piece_sq.value() ^ 56;
-        int king_square = king_sq.value() ^ 56;
+        int king_square  = king_sq.value() ^ 56;
 
         const int oP  = piece_type.value() + 6 * (piece_color != view);
         const int oK  = (7 * !(king_square & 4)) ^ (56 * view.value()) ^ king_square;
@@ -161,51 +146,49 @@ Square piece_sq,
 
 #include <hwy/highway.h>
 
-
 HWY_BEFORE_NAMESPACE();
 using namespace hwy::HWY_NAMESPACE;
 
-struct Accumulator {
+struct Accumulator
+{
     static constexpr auto OutSz = 1024;
-    static constexpr auto L1Sz = 16;
-    static constexpr auto L2Sz = 32;
-    using AccumulatorT = std::array<int16_t, OutSz>;
+    static constexpr auto L1Sz  = 16;
+    static constexpr auto L2Sz  = 32;
+    using AccumulatorT          = std::array<int16_t, OutSz>;
 
-private:
+  private:
     HWY_ALIGN AccumulatorT white_accumulator{};
     HWY_ALIGN AccumulatorT black_accumulator{};
 
-public:
+  public:
     Accumulator() = default;
-    explicit Accumulator(const Position& pos) {
+    explicit Accumulator(const Position& pos)
+    {
         const auto [wadd, wrem] = FeatureTransformer::get_features(pos, pos, WHITE, true);
         refresh_acc(WHITE, wadd);
         const auto [badd, brem] = FeatureTransformer::get_features(pos, pos, BLACK, true);
         refresh_acc(BLACK, badd);
     }
 
-    explicit Accumulator(const Accumulator& acc_prev, const Position& pos_cur, const Position& pos_prev) {
+    explicit Accumulator(const Accumulator& acc_prev, const Position& pos_cur, const Position& pos_prev)
+    {
         update(acc_prev, pos_cur, pos_prev, WHITE);
         update(acc_prev, pos_cur, pos_prev, BLACK);
     }
 
     template <size_t UNROLL = 4>
-    int32_t evaluate(const Color view) const
+    [[nodiscard]] int32_t evaluate(const Color view) const
     {
-        const auto our_acc_ptr   =
-            static_cast<const int16_t*>(HWY_ASSUME_ALIGNED(view == WHITE ? white_accumulator.data() : black_accumulator.data(), 64));
-        const auto their_acc_ptr =
-            static_cast<const int16_t*>(HWY_ASSUME_ALIGNED(view == WHITE ? black_accumulator.data() : white_accumulator.data(), 64));
+        const auto our_acc_ptr = static_cast<const int16_t*>(
+            HWY_ASSUME_ALIGNED(view == WHITE ? white_accumulator.data() : black_accumulator.data(), 64));
+        const auto their_acc_ptr = static_cast<const int16_t*>(
+            HWY_ASSUME_ALIGNED(view == WHITE ? black_accumulator.data() : white_accumulator.data(), 64));
 
         using D32 = ScalableTag<int32_t>;
         using D16 = ScalableTag<int16_t>;
-        using D8 = ScalableTag<int8_t>;
 
         using HalfD16 = FixedTag<int16_t, Lanes(D32{})>;
-        using HalfD8 = FixedTag<int8_t, Lanes(D16{})>;
-
-        using QuarterD8 = FixedTag<int8_t, Lanes(D32{})>;
-
+        using HalfD8  = FixedTag<int8_t, Lanes(D16{})>;
 
 
         HWY_ALIGN std::array<int32_t, L1Sz> l1_out{};
@@ -214,61 +197,76 @@ public:
         std::memcpy(l2_out.data(), g_l2_biases, sizeof(g_l2_biases));
         HWY_ALIGN int32_t out = g_out_bias[0];
 
-        //std::ranges::for_each(white_accumulator | std::views::take(10), [] (int16_t i) { std::cout << i << std::endl; });
+        // std::ranges::for_each(white_accumulator | std::views::take(10), [] (int16_t i) { std::cout << i << std::endl;
+        // });
 
-        for (int i = 0; i < L1Sz; ++i)
-        {
 
-            HWY_ALIGN Vec<D32> acc = Zero(D32{});
-            for (size_t j = 0; j < OutSz; j += Lanes(HalfD8{})) {
-
-                const Vec<D16> v_our = Min(Max(Load(D16{}, &our_acc_ptr[j]), Zero(D16{})), Set(D16{}, 127 * 32));
-                const Vec<D16> v_their = Min(Max(Load(D16{}, &their_acc_ptr[j]), Zero(D16{})), Set(D16{}, 127 * 32));
-
-                const Vec<D16> w_our = PromoteTo(D16{}, Load(HalfD8{}, &g_l1_weights[i * OutSz * 2 + j]));
-                const Vec<D16> w_their = PromoteTo(D16{}, Load(HalfD8{}, &g_l1_weights[i * OutSz * 2 + j + OutSz]));
-
-                acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our, w_our));
-                acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their, w_their));
+        for (size_t j = 0; j < OutSz; j += Lanes(D16{}) * UNROLL) {
+            std::array<Vec<D16>, UNROLL> v_our_block{};
+            std::array<Vec<D16>, UNROLL> v_their_block{};
+            for (size_t u = 0; u < UNROLL; ++u) {
+                const size_t idx = j + u * Lanes(HalfD8{});
+                v_our_block[u]   = Min(Max(Load(D16{}, &our_acc_ptr[idx]), Zero(D16{})), Set(D16{}, 127*32));
+                v_their_block[u] = Min(Max(Load(D16{}, &their_acc_ptr[idx]), Zero(D16{})), Set(D16{}, 127*32));
             }
-            l1_out[i] += ReduceSum(D32{}, acc) / 32;
+
+
+            for (int i = 0; i < L1Sz; ++i) {
+                Vec<D32> acc = Zero(D32{});
+
+                for (size_t u = 0; u < UNROLL; ++u) {
+                    const size_t idx = j + u * Lanes(D16{});
+                    const Vec<D16> w_our   = Load(D16{}, &g_l1_weights[i * OutSz * 2 + idx]);
+                    const Vec<D16> w_their = Load(D16{}, &g_l1_weights[i * OutSz * 2 + idx + OutSz]);
+
+                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_our_block[u], w_our));
+                    acc = Add(acc, WidenMulPairwiseAdd(D32{}, v_their_block[u], w_their));
+                }
+
+                l1_out[i] += ReduceSum(D32{}, acc);
+            }
         }
 
-        //std::ranges::for_each(l1_out | std::views::take(10), [] (int16_t i) { std::cout << i << std::endl; });
+        // we get better precision by dividing in the end
+        using QuantVec = CappedTag<int32_t, L1Sz>;
+        for (int i = 0; i < L1Sz; i += Lanes(QuantVec{}))
+        {
+            Vec<D32> acc = Load(QuantVec{}, &l1_out[i]);
+            acc = ShiftRight<16>(acc);
+            Store(acc, QuantVec{}, &l1_out[i]);
+        }
 
+
+        // std::ranges::for_each(l1_out | std::views::take(10), [] (int16_t i) { std::cout << i << std::endl; });
 
         for (int i = 0; i < L2Sz; ++i)
         {
             HWY_ALIGN Vec<D32> acc = Zero(D32{});
-            for (size_t j = 0; j < L1Sz; j += Lanes(HalfD16{})) {
-
+            for (size_t j = 0; j < L1Sz; j += Lanes(HalfD16{}))
+            {
                 const Vec<D32> v = Max(Load(D32{}, &l1_out[j]), Zero(D32{}));
-
                 const Vec<D32> w = PromoteTo(D32{}, Load(HalfD16{}, &g_l2_weights[i * L1Sz + j]));
-
                 acc = Add(acc, Mul(v, w));
             }
-            l2_out[i] += ReduceSum(D32{}, acc) / 32;
+            l2_out[i] += ReduceSum(D32{}, acc);
         }
+
 
         HWY_ALIGN Vec<D32> acc = Zero(D32{});
-        for (size_t j = 0; j < L2Sz; j += Lanes(HalfD16{})) {
-
+        for (size_t j = 0; j < L2Sz; j += Lanes(HalfD16{}))
+        {
             const Vec<D32> v = Max(Load(D32{}, &l2_out[j]), Zero(D32{}));
-
             const Vec<D32> w = PromoteTo(D32{}, Load(HalfD16{}, &g_out_weights[j]));
-
             acc = Add(acc, Mul(v, w));
         }
-        out += ReduceSum(D32{}, acc) / 32;
+        out += ReduceSum(D32{}, acc);
 
-        return out / 32;
+        return out >> 16;
     }
 
-
-private:
-
-    void update(const Accumulator& prev, const Position& pos_cur, const Position& pos_prev, const Color view) {
+  private:
+    void update(const Accumulator& prev, const Position& pos_cur, const Position& pos_prev, const Color view)
+    {
         const bool needs_refresh = FeatureTransformer::needs_refresh(pos_cur, pos_prev, view);
         const auto [add, rem]    = FeatureTransformer::get_features(pos_cur, pos_prev, view, needs_refresh);
         if (needs_refresh)
@@ -278,32 +276,39 @@ private:
     }
 
     template <size_t UNROLL = 8>
-    void refresh_acc(const Color view, const FeatureTransformer::RetT& features) {
+    void refresh_acc(const Color view, const FeatureTransformer::RetT& features)
+    {
         auto& acc = (view == WHITE ? white_accumulator : black_accumulator);
 
         std::memcpy(acc.data(), g_ft_biases, OutSz * sizeof(int16_t));
 
-        using D = ScalableTag<int16_t>;
+        using D                         = ScalableTag<int16_t>;
         alignas(64) auto v_accumulators = std::array<decltype(Load(D{}, acc.data())), UNROLL>{};
 
-        auto* HWY_RESTRICT acc_ptr =  static_cast<int16_t*>(HWY_ASSUME_ALIGNED(acc.data(), 64));
+        auto* HWY_RESTRICT acc_ptr = static_cast<int16_t*>(HWY_ASSUME_ALIGNED(acc.data(), 64));
 
-        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{})) {
-            for (size_t u = 0; u < UNROLL; ++u) {
+        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{}))
+        {
+            for (size_t u = 0; u < UNROLL; ++u)
+            {
                 if (i + u * Lanes(D{}) < OutSz)
                     v_accumulators[u] = Load(D{}, &acc_ptr[i + u * Lanes(D{})]);
             }
 
-            for (const auto f : features) {
-                for (size_t u = 0; u < UNROLL; ++u) {
-                    if (i + u * Lanes(D{}) < OutSz) {
-                        auto v_weights = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
+            for (const auto f : features)
+            {
+                for (size_t u = 0; u < UNROLL; ++u)
+                {
+                    if (i + u * Lanes(D{}) < OutSz)
+                    {
+                        auto v_weights    = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
                         v_accumulators[u] = Add(v_accumulators[u], v_weights);
                     }
                 }
             }
 
-            for (size_t u = 0; u < UNROLL; ++u) {
+            for (size_t u = 0; u < UNROLL; ++u)
+            {
                 if (i + u * Lanes(D{}) < OutSz)
                     Store(v_accumulators[u], D{}, &acc_ptr[i + u * Lanes(D{})]);
             }
@@ -311,55 +316,90 @@ private:
     }
 
     template <size_t UNROLL = 8>
-    void update_acc(
-                    const Accumulator& previous,
-                    const Color view,
-                    const FeatureTransformer::RetT& add,
-                    const FeatureTransformer::RetT& sub) {
+    void update_acc(const Accumulator& previous, const Color view, const FeatureTransformer::RetT& add,
+                    const FeatureTransformer::RetT& sub)
+    {
         auto& acc  = (view == WHITE ? white_accumulator : black_accumulator);
         auto& prev = (view == WHITE ? previous.white_accumulator : previous.black_accumulator);
 
         std::memcpy(acc.data(), prev.data(), OutSz * sizeof(int16_t));
 
-        using D = ScalableTag<int16_t>;
+        using D                         = ScalableTag<int16_t>;
         alignas(64) auto v_accumulators = std::array<decltype(Load(D{}, acc.data())), UNROLL>{};
 
         auto* HWY_RESTRICT acc_ptr = static_cast<int16_t*>(HWY_ASSUME_ALIGNED(acc.data(), 64));
 
-        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{})) {
-            for (size_t u = 0; u < UNROLL; ++u) {
+        for (size_t i = 0; i < OutSz; i += UNROLL * Lanes(D{}))
+        {
+            for (size_t u = 0; u < UNROLL; ++u)
+            {
                 if (i + u * Lanes(D{}) < OutSz)
                     v_accumulators[u] = Load(D{}, &acc_ptr[i + u * Lanes(D{})]);
             }
 
-            for (const auto f : add) {
-                for (size_t u = 0; u < UNROLL; ++u) {
-                    if (i + u * Lanes(D{}) < OutSz) {
-                        auto v_weights = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
+            for (const auto f : add)
+            {
+                for (size_t u = 0; u < UNROLL; ++u)
+                {
+                    if (i + u * Lanes(D{}) < OutSz)
+                    {
+                        auto v_weights    = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
                         v_accumulators[u] = Add(v_accumulators[u], v_weights);
                     }
                 }
             }
 
-            for (const auto f : sub) {
-                for (size_t u = 0; u < UNROLL; ++u) {
-                    if (i + u * Lanes(D{}) < OutSz) {
-                        auto v_weights = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
+            for (const auto f : sub)
+            {
+                for (size_t u = 0; u < UNROLL; ++u)
+                {
+                    if (i + u * Lanes(D{}) < OutSz)
+                    {
+                        auto v_weights    = Load(D{}, &g_ft_weights[f * OutSz + i + u * Lanes(D{})]);
                         v_accumulators[u] = Sub(v_accumulators[u], v_weights);
                     }
                 }
             }
 
-            for (size_t u = 0; u < UNROLL; ++u) {
+            for (size_t u = 0; u < UNROLL; ++u)
+            {
                 if (i + u * Lanes(D{}) < OutSz)
                     Store(v_accumulators[u], D{}, &acc_ptr[i + u * Lanes(D{})]);
             }
         }
     }
-
 };
 
 HWY_AFTER_NAMESPACE();
 
+struct Accumulators
+{
+    using Acc         = Accumulator;
+    using ConstAcc    = const Acc;
+    using AccRef      = Acc&;
+    using ConstAccRef = ConstAcc&;
+
+    explicit Accumulators(const Position& pos)
+    {
+        m_accumulators.reserve(MAX_PLY);
+        m_accumulators.emplace_back(pos);
+    }
+
+    std::span<Acc>                    accumulators() { return m_accumulators; }
+    [[nodiscard]] std::span<ConstAcc> accumulators() const { return m_accumulators; }
+
+    AccRef                    last() { return m_accumulators.back(); }
+    [[nodiscard]] ConstAccRef last() const { return m_accumulators.back(); }
+
+    void do_move(const Position& prev, const Position& next)
+    {
+        m_accumulators.emplace_back(m_accumulators.back(), next, prev);
+    }
+
+    void undo_move() { m_accumulators.pop_back(); }
+
+  private:
+    std::vector<Accumulator> m_accumulators{};
+};
 
 #endif

@@ -104,8 +104,8 @@ class Bitboard
             "1 . . . . . . . . 1 \n"
             "  A B C D E F G H   \n";
 
-        constexpr auto row_len = std::distance(empty_board, std::ranges::find(empty_board, '8'));
-        constexpr auto col_len = std::distance(empty_board, std::ranges::find(empty_board, 'A'));
+        static constexpr auto row_len = std::distance(empty_board, std::ranges::find(empty_board, '8'));
+        static constexpr auto col_len = std::distance(empty_board, std::ranges::find(empty_board, 'A'));
 
         std::string out(empty_board);
 
@@ -191,83 +191,100 @@ constexpr Bitboard ray(const Square sq, const Bitboard blockers = bb::empty())
 }
 
 
-inline constexpr EnumArray<Color, EnumArray<Square, Bitboard>> g_pawn_pseudo_attacks = [] () {
-    EnumArray<Color, EnumArray<Square, Bitboard>> ret{};
-    for (auto sq = A1; sq <= H8; ++sq)
-    {
-        const Bitboard bb{sq};
-        ret.at(WHITE).at(sq)   = shift<NORTH_WEST>(bb) | shift<NORTH_EAST>(bb);
-        ret.at(BLACK).at(sq)   = shift<SOUTH_WEST>(bb) | shift<SOUTH_EAST>(bb);
-    }
-    return ret;
-} ();
-
-inline constexpr EnumArray<PieceType, EnumArray<Square, Bitboard>> g_piece_pseudo_attacks = [] ()
+inline EnumArray<Color, EnumArray<Square, Bitboard>>& pawn_pseudo_attacks()
 {
-    EnumArray<PieceType, EnumArray<Square, Bitboard>> ret{};
-    for (auto sq = A1; sq <= H8; ++sq)
+    static EnumArray<Color, EnumArray<Square, Bitboard>> g_pawn_pseudo_attacks = [] () {
+        EnumArray<Color, EnumArray<Square, Bitboard>> ret{};
+        for (auto sq = A1; sq <= H8; ++sq)
+        {
+            const Bitboard bb{sq};
+            ret.at(WHITE).at(sq)   = shift<NORTH_WEST>(bb) | shift<NORTH_EAST>(bb);
+            ret.at(BLACK).at(sq)   = shift<SOUTH_WEST>(bb) | shift<SOUTH_EAST>(bb);
+        }
+        return ret;
+    } ();
+    return g_pawn_pseudo_attacks;
+}
+
+
+inline EnumArray<PieceType, EnumArray<Square, Bitboard>>& piece_pseudo_attacks()
+{
+    static EnumArray<PieceType, EnumArray<Square, Bitboard>> g_piece_pseudo_attacks = [] ()
     {
-        const Bitboard bb{sq};
-        ret.at(KNIGHT).at(sq) = shift<NORTH, NORTH, EAST>(bb) | shift<NORTH, NORTH, WEST>(bb) |
-                                                   shift<SOUTH, SOUTH, EAST>(bb) | shift<SOUTH, SOUTH, WEST>(bb) |
-                                                   shift<EAST, EAST, NORTH>(bb) | shift<EAST, EAST, SOUTH>(bb) |
-                                                       shift<WEST, WEST, NORTH>(bb) | shift<WEST, WEST, SOUTH>(bb);
-        ret.at(BISHOP).at(sq) = ray<BISHOP>(sq);
-        ret.at(ROOK).at(sq)   = ray<ROOK>(sq);
-        ret.at(QUEEN).at(sq)  = ray<BISHOP>(sq) | ray<ROOK>(sq);
-        ret.at(KING).at(sq)   = shift<NORTH>(bb) | shift<SOUTH>(bb) | shift<EAST>(bb) |
-                                                 shift<WEST>(bb) | shift<NORTH, EAST>(bb) | shift<NORTH, WEST>(bb) |
-                                                 shift<SOUTH, EAST>(bb) | shift<SOUTH, WEST>(bb);
-    }
-    return ret;
-} ();
+        EnumArray<PieceType, EnumArray<Square, Bitboard>> ret{};
+        for (auto sq = A1; sq <= H8; ++sq)
+        {
+            const Bitboard bb{sq};
+            ret.at(KNIGHT).at(sq) = shift<NORTH, NORTH, EAST>(bb) | shift<NORTH, NORTH, WEST>(bb) |
+                                                       shift<SOUTH, SOUTH, EAST>(bb) | shift<SOUTH, SOUTH, WEST>(bb) |
+                                                       shift<EAST, EAST, NORTH>(bb) | shift<EAST, EAST, SOUTH>(bb) |
+                                                           shift<WEST, WEST, NORTH>(bb) | shift<WEST, WEST, SOUTH>(bb);
+            ret.at(BISHOP).at(sq) = ray<BISHOP>(sq);
+            ret.at(ROOK).at(sq)   = ray<ROOK>(sq);
+            ret.at(QUEEN).at(sq)  = ray<BISHOP>(sq) | ray<ROOK>(sq);
+            ret.at(KING).at(sq)   = shift<NORTH>(bb) | shift<SOUTH>(bb) | shift<EAST>(bb) |
+                                                     shift<WEST>(bb) | shift<NORTH, EAST>(bb) | shift<NORTH, WEST>(bb) |
+                                                     shift<SOUTH, EAST>(bb) | shift<SOUTH, WEST>(bb);
+        }
+        return ret;
+    } ();
+    return g_piece_pseudo_attacks;
+}
+
+
 
 template <PieceType pc>
 constexpr Bitboard pseudo_attack(const Square sq, const Color c)
 {
     static_assert(pc != NO_PIECE_TYPE, "Invalid piece type");
     if constexpr (pc == PAWN)
-        return g_pawn_pseudo_attacks.at(c).at(sq);
+        return pawn_pseudo_attacks().at(c).at(sq);
     else if constexpr (pc == KNIGHT || pc == BISHOP || pc == ROOK || pc == QUEEN || pc == KING)
-        return g_piece_pseudo_attacks.at(pc).at(sq);
+        return piece_pseudo_attacks().at(pc).at(sq);
     return bb::empty();
 }
 
-inline constexpr EnumArray<Square, EnumArray<Square, Bitboard>> g_line = [] {
-    EnumArray<Square, EnumArray<Square, Bitboard>> ret{};
-    for (Square sq1 = A1; sq1 <= H8; ++sq1) {
-        for (Square sq2 = A1; sq2 <= H8; ++sq2) {
-            const Bitboard b1{sq1};
-            const Bitboard b2{sq2};
-            Bitboard line = bb::empty();
-
-            if (sq1.file() == sq2.file())
-                line = Bitboard{sq1.file()};
-            else if (sq1.rank() == sq2.rank())
-                line = Bitboard{sq1.rank()};
-            else if (sq1.file().value() - sq1.rank().value() == sq2.file().value() - sq2.rank().value() ||
-                     sq1.file().value() + sq1.rank().value() == sq2.file().value() + sq2.rank().value()) {
-                line = (ray<BISHOP>(sq1) & ray<BISHOP>(sq2)) | b1 | b2;
-            }
-
-            ret.at(sq1).at(sq2) = line;
-        }
-    }
-    return ret;
-}();
-
-constexpr Bitboard line(const Square sq1, const Square sq2)
+inline const EnumArray<Square, EnumArray<Square, Bitboard>>& lines()
 {
-    return g_line.at(sq1).at(sq2);
+    static EnumArray<Square, EnumArray<Square, Bitboard>> g_lines = [] {
+        EnumArray<Square, EnumArray<Square, Bitboard>> ret{};
+        for (Square sq1 = A1; sq1 <= H8; ++sq1) {
+            for (Square sq2 = A1; sq2 <= H8; ++sq2) {
+                const Bitboard b1{sq1};
+                const Bitboard b2{sq2};
+                Bitboard line = bb::empty();
+
+                if (sq1.file() == sq2.file())
+                    line = Bitboard{sq1.file()};
+                else if (sq1.rank() == sq2.rank())
+                    line = Bitboard{sq1.rank()};
+                else if (sq1.file().value() - sq1.rank().value() == sq2.file().value() - sq2.rank().value() ||
+                         sq1.file().value() + sq1.rank().value() == sq2.file().value() + sq2.rank().value()) {
+                    line = (ray<BISHOP>(sq1) & ray<BISHOP>(sq2)) | b1 | b2;
+                         }
+
+                ret.at(sq1).at(sq2) = line;
+            }
+        }
+        return ret;
+    }();
+    return g_lines;
 }
 
-static bool are_aligned(const Square sq1, const Square sq2, const Square sq3)
+inline Bitboard line(const Square sq1, const Square sq2)
+{
+    return lines().at(sq1).at(sq2);
+}
+
+inline bool are_aligned(const Square sq1, const Square sq2, const Square sq3)
 {
     return line(sq1, sq2) == line(sq2, sq3);
 }
 
-inline constexpr EnumArray<Square, EnumArray<Square, Bitboard>> g_from_to = [] {
-    EnumArray<Square, EnumArray<Square, Bitboard>> ret{};
+inline const EnumArray<Square, EnumArray<Square, Bitboard>>& from_to()
+{
+    static EnumArray<Square, EnumArray<Square, Bitboard>> g_from_to = [] {
+        EnumArray<Square, EnumArray<Square, Bitboard>> ret{};
         for (auto sq1 = A1; sq1 <= H8; ++sq1)
         {
             for (auto sq2 = A1; sq2 <= H8; ++sq2)
@@ -284,15 +301,18 @@ inline constexpr EnumArray<Square, EnumArray<Square, Bitboard>> g_from_to = [] {
                 }
             }
         }
-    return ret;
-}();
-
-constexpr Bitboard from_to_incl(const Square sq1, const Square sq2)
-{
-    return g_from_to.at(sq1).at(sq2);
+        return ret;
+    }();
+    return g_from_to;
 }
 
-constexpr Bitboard from_to_excl(const Square sq1, const Square sq2)
+
+inline Bitboard from_to_incl(const Square sq1, const Square sq2)
+{
+    return from_to().at(sq1).at(sq2);
+}
+
+inline Bitboard from_to_excl(const Square sq1, const Square sq2)
 {
     return from_to_incl(sq1, sq2) & ~Bitboard(sq1) & ~Bitboard(sq2);
 }
@@ -358,13 +378,22 @@ struct magics_t
 };
 
 template <PieceType pc>
-inline magics_t<pc> g_magics;
+const magics_t<pc>& magics() {
+    static magics_t<pc> instance;
+    return instance;
+}
 
 template <>
-inline magics_t<BISHOP> g_magics<BISHOP>;
+inline const magics_t<BISHOP>& magics<BISHOP>() {
+    static magics_t<BISHOP> instance;
+    return instance;
+}
 
 template <>
-inline magics_t<ROOK> g_magics<ROOK>;
+inline const magics_t<ROOK>& magics<ROOK>() {
+    static magics_t<ROOK> instance;
+    return instance;
+}
 
 static uint64_t       random_u64()
 {
@@ -443,19 +472,20 @@ magics_t<pc>::magics_t()
                 assert(0 && "failed to find magic");
             }
         }
-        g_magics<pc>.magic_vals.at(sq).offset = offset;
-        g_magics<pc>.magic_vals.at(sq).magic  = magic;
-        g_magics<pc>.magic_vals.at(sq).mask   = mask;
-        g_magics<pc>.magic_vals.at(sq).shift  = shift;
+        magic_vals.at(sq).offset = offset;
+        magic_vals.at(sq).magic  = magic;
+        magic_vals.at(sq).mask   = mask;
+        magic_vals.at(sq).shift  = shift;
         offset += combinations;
     }
 }
+
 template <PieceType pc>
 Bitboard attacks(const Square sq, const Bitboard occupancy = bb::empty(), const Color c = WHITE)
 {
     if constexpr (pc == ROOK || pc == BISHOP)
     {
-        return g_magics<pc>.attack(sq, occupancy);
+        return magics<pc>().attack(sq, occupancy);
     }
     else if constexpr (pc == QUEEN)
     {
@@ -490,5 +520,18 @@ inline Bitboard attacks(const PieceType pt, const Square sq, const Bitboard occu
             return bb::empty();
     }
 }
+
+struct InitTables {
+    InitTables() {
+        (void)pawn_pseudo_attacks();
+        (void)piece_pseudo_attacks();
+        (void)lines();
+        (void)from_to();
+        (void)magics<BISHOP>();
+        (void)magics<ROOK>();
+    }
+};
+
+static InitTables init_tables_instance;
 
 #endif

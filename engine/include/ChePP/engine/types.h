@@ -949,6 +949,8 @@ constexpr int mated_in(const int ply) noexcept
 
 struct SearchStackNode
 {
+    int eval{0};
+    Move excluded{Move::none()};
     Move killer1{Move::none()};
     Move killer2{Move::none()};
 };

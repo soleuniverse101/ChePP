@@ -7,19 +7,17 @@
 
 #include <ranges>
 
-struct ScoredMove {
+struct ScoredMove
+{
     Move move;
-    int score;
+    int  score;
 
-    bool operator<(const ScoredMove& other) const {
-        return score < other.score;
-    }
-    bool operator>(const ScoredMove& other) const {
-        return score > other.score;
-    }
+    bool operator<(const ScoredMove& other) const { return score < other.score; }
+    bool operator>(const ScoredMove& other) const { return score > other.score; }
 };
 
-struct MoveList {
+struct MoveList
+{
     static constexpr size_t max_moves = 256;
 
     using value_type      = ScoredMove;
@@ -32,69 +30,77 @@ struct MoveList {
 
     MoveList() : m_moves(), m_size(0) {}
 
-    void add(const Move& m, const int score = 0) {
+    void add(const Move& m, const int score = 0)
+    {
         assert(m_size < max_moves && "MoveList overflow");
         m_moves[m_size++] = {m, score};
     }
-    void add(const ScoredMove& mv) {
+    void add(const ScoredMove& mv)
+    {
         assert(m_size < max_moves && "MoveList overflow");
         m_moves[m_size++] = mv;
     }
     void push_back(const Move& m, const int score = 0) { add(m, score); }
     void push_back(const ScoredMove& move) { add(move); }
 
-
-    reference operator[](const size_type index) {
+    reference operator[](const size_type index)
+    {
         assert(index < m_size);
         return m_moves[index];
     }
-    const_reference operator[](const size_type index) const {
+    const_reference operator[](const size_type index) const
+    {
         assert(index < m_size);
         return m_moves[index];
     }
 
     void clear() { m_size = 0; }
-    void shrink(const size_type n) {
+    void shrink(const size_type n)
+    {
         assert(n <= m_size);
         m_size -= n;
     }
 
-    [[nodiscard]] size_type size() const { return m_size; }
+    [[nodiscard]] size_type                  size() const { return m_size; }
     [[nodiscard]] static constexpr size_type capacity() { return max_moves; }
-    [[nodiscard]] bool empty() const { return m_size == 0; }
+    [[nodiscard]] bool                       empty() const { return m_size == 0; }
 
-    [[nodiscard]] iterator begin() { return m_moves.data(); }
-    [[nodiscard]] iterator end() { return m_moves.data() + m_size; }
+    [[nodiscard]] iterator       begin() { return m_moves.data(); }
+    [[nodiscard]] iterator       end() { return m_moves.data() + m_size; }
     [[nodiscard]] const_iterator begin() const { return m_moves.data(); }
     [[nodiscard]] const_iterator end() const { return m_moves.data() + m_size; }
     [[nodiscard]] const_iterator cbegin() const { return m_moves.data(); }
     [[nodiscard]] const_iterator cend() const { return m_moves.data() + m_size; }
 
-    [[nodiscard]] reference front() {
+    [[nodiscard]] reference front()
+    {
         assert(!empty());
         return m_moves[0];
     }
-    [[nodiscard]] const_reference front() const {
+    [[nodiscard]] const_reference front() const
+    {
         assert(!empty());
         return m_moves[0];
     }
-    [[nodiscard]] reference back() {
+    [[nodiscard]] reference back()
+    {
         assert(!empty());
         return m_moves[m_size - 1];
     }
-    [[nodiscard]] const_reference back() const {
+    [[nodiscard]] const_reference back() const
+    {
         assert(!empty());
         return m_moves[m_size - 1];
     }
 
-    void sort() {
-        std::ranges::sort(*this, std::greater<>{});
-    }
+    void sort() { std::ranges::sort(*this, std::greater<>{}); }
 
     template <typename Pred>
-    void filter(Pred pred) {
+    void filter(Pred pred)
+    {
         int idx = 0;
-        for (size_type i = 0; i < m_size; ++i) {
+        for (size_type i = 0; i < m_size; ++i)
+        {
             if (pred(m_moves[i]))
                 m_moves[idx++] = m_moves[i];
         }
@@ -103,9 +109,8 @@ struct MoveList {
 
   private:
     std::array<ScoredMove, max_moves> m_moves;
-    size_type m_size;
+    size_type                         m_size;
 };
-
 
 inline void make_all_promotions(MoveList& list, const Square from, const Square to)
 {
@@ -190,7 +195,7 @@ void gen_pawn_moves(const Position& pos, MoveList& list)
 template <PieceType pc>
 void gen_pc_moves(const Position& pos, MoveList& list)
 {
-    const Color c = pos.side_to_move();
+    const Color    c = pos.side_to_move();
     const Bitboard check_mask{pos.check_mask(c) == bb::empty() ? bb::full() : pos.check_mask(c)};
     Bitboard       bb{pos.occupancy(c, pc)};
 
@@ -204,7 +209,7 @@ void gen_pc_moves(const Position& pos, MoveList& list)
 
 inline void gen_castling(const Position& pos, MoveList& list)
 {
-    const Color c = pos.side_to_move();
+    const Color          c      = pos.side_to_move();
     const CastlingRights rights = pos.castling_rights();
 
     if (pos.check_mask(c) || !rights.has_any_color(c))
@@ -234,7 +239,7 @@ inline void gen_castling(const Position& pos, MoveList& list)
 
 inline void gen_king_moves(const Position& pos, MoveList& list)
 {
-    const Color c = pos.side_to_move();
+    const Color    c     = pos.side_to_move();
     const Square   from  = pos.ksq(c);
     const Bitboard moves = attacks<KING>(from, pos.occupancy());
 
@@ -247,7 +252,7 @@ inline void gen_king_moves(const Position& pos, MoveList& list)
 template <Color c>
 MoveList gen_moves(const Position& pos)
 {
-    MoveList list;
+    MoveList  list;
     const int n_checkers = pos.checkers(c).popcount();
     assert(n_checkers <= 2);
 
@@ -263,28 +268,32 @@ MoveList gen_moves(const Position& pos)
     return list;
 }
 
-
-
 inline MoveList gen_moves(const Position& pos)
 {
-    if (pos.side_to_move() == WHITE) return gen_moves<WHITE>(pos);
+    if (pos.side_to_move() == WHITE)
+        return gen_moves<WHITE>(pos);
     return gen_moves<BLACK>(pos);
 }
 
 inline MoveList gen_legal(const Position& pos)
 {
     MoveList moves = gen_moves(pos);
-    moves.filter([&](const ScoredMove& mv) { return pos.is_legal(mv.move);});
+    moves.filter([&](const ScoredMove& mv) { return pos.is_legal(mv.move); });
     return moves;
 }
-
 
 inline MoveList filter_tactical(const Position& pos, const MoveList& list)
 {
     MoveList ret;
-    std::ranges::copy_if(list, std::back_inserter(ret), [&](const ScoredMove& mv) {
-        return pos.is_occupied(mv.move.to_sq()) || mv.move.type_of() == EN_PASSANT || mv.move.type_of() == PROMOTION || attacks(pos.piece_type_at(mv.move.from_sq()), mv.move.to_sq(), pos.occupancy() & ~Bitboard(mv.move.from_sq()), pos.side_to_move()).is_set(pos.ksq(~pos.side_to_move()));
-    });
+    std::ranges::copy_if(list, std::back_inserter(ret),
+                         [&](const ScoredMove& mv)
+                         {
+                             return pos.is_occupied(mv.move.to_sq()) || mv.move.type_of() == EN_PASSANT ||
+                                    mv.move.type_of() == PROMOTION ||
+                                    attacks(pos.piece_type_at(mv.move.from_sq()), mv.move.to_sq(),
+                                            pos.occupancy() & ~Bitboard(mv.move.from_sq()), pos.side_to_move())
+                                        .is_set(pos.ksq(~pos.side_to_move()));
+                         });
     return ret;
 }
 

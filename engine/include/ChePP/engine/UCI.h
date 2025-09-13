@@ -253,7 +253,7 @@ class UCIEngine {
 public:
     UCIEngine() {
         m_params.handler.add<EngineParamSpin>("Hash Size", m_params.hash_size, 64, 64, 512);
-        m_params.handler.add<EngineParamSpin>("Threads", m_params.threads, 1, 1, 1);
+        m_params.handler.add<EngineParamSpin>("Threads", m_params.threads, 1, 1, std::thread::hardware_concurrency());
         m_params.handler.add<EngineParamButton>("Clear Hash", []() {
             g_tt.reset();
             std::cout << "info string Hash cleared" << std::endl;
@@ -316,9 +316,10 @@ public:
                 if (i) fen += " ";
                 fen += part;
             }
-            if (m_pos.init_pos.from_fen(fen))
+            bool success = m_pos.init_pos.from_fen(fen);
+            m_pos.last_pos = m_pos.init_pos;
+            if (success)
             {
-                m_pos.last_pos = m_pos.init_pos;
                 std::string is_moves;
                 if (iss >> token && token == "moves") {
                     while (iss >> token) {
@@ -342,27 +343,29 @@ public:
 
     void go(const std::string& cmd)
     {
-        TimeParams uci{};
+        TimeManager::Constraints constraints;
         std::istringstream iss(cmd);
         std::string token;
 
         while (iss >> token) {
-            if (token == "wtime") iss >> uci.wtime_ms;
-            else if (token == "btime") iss >> uci.btime_ms;
-            else if (token == "winc")  iss >> uci.winc_ms;
-            else if (token == "binc")  iss >> uci.binc_ms;
-            else if (token == "movestogo") iss >> uci.movestogo;
-            else if (token == "depth") { iss >> uci.depth;; }
-            else if (token == "movetime") { iss >> uci.movetime;; }
+            if (token == "wtime") iss >> constraints.time[WHITE];
+            else if (token == "btime") iss >> constraints.time[BLACK];
+            else if (token == "winc")  iss >> constraints.inc[WHITE];
+            else if (token == "binc")  iss >> constraints.inc[BLACK];
+            else if (token == "movestogo") iss >> constraints.moves_to_go;
+            else if (token == "depth") { iss >> constraints.depth; ; }
+            else if (token == "movetime") { iss >> constraints.move_time; }
 
         }
 
-        SearchInfo info{
-            TimeManager{uci, m_pos.last_pos.side_to_move()},
-            0,
-        };
+        TimeManager::Params tm_params{};
+        TimeManager::InitInfo init_info{};
+        init_info.moves_played = m_pos.last_pos.full_move_clock();
+        init_info.side = m_pos.last_pos.side_to_move();
 
-        m_handler.set(1, info, m_pos.init_pos, m_pos.moves);
+        TimeManager tm{ tm_params, init_info, constraints };
+
+        m_handler.set(m_params.threads, tm, m_pos.init_pos, m_pos.moves);
         m_worker = std::jthread([&]()
         {
             m_handler.start( [this] ()
@@ -374,12 +377,20 @@ public:
         m_state = Searching;
     }
 
+    void eval() const
+    {
+        const Accumulator accum{m_pos.last_pos};
+        std::cout << "Evaluation for " << m_pos.last_pos.side_to_move() << " (cp): " << accum.evaluate(m_pos.last_pos.side_to_move()) << std::endl;
+    }
+
 
     void stop()
     {
         m_handler.stop_all();
-        if (m_worker.joinable())
-            m_worker.join();
+        while (!m_worker.joinable())
+        {
+        }
+        m_worker.join();
     }
 
     int loop() {
@@ -396,14 +407,13 @@ public:
             } else if (line.rfind("go", 0) == 0) {
                 go(line);
             } else if (line.rfind("setoption", 0) == 0) {
-            if (!m_params.handler.handle_setoption(line))
-            {
-                std::cerr << "info string Unknown option or invalid value\n" << std::endl;
-            }
-            }else if (line == "stop") {
+                if (!m_params.handler.handle_setoption(line))
+                    std::cerr << "info string Unknown option or invalid value\n" << std::endl;
+            } else if (line == "evaluate" || line == "eval") {
+                eval();
+            } else if (line == "stop") {
                 stop();
-            } else if (line == "quit")
-            {
+            } else if (line == "quit") {
                 stop();
                 break;
             }
