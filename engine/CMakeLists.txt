@@ -11,13 +11,30 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fathom)
 
+
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 # Highway is used for cross platform SIMD code
+set(HIGHWAY_BUILD_TESTS OFF CACHE BOOL "Disable Highway tests" FORCE)
+
 FetchContent_Declare(
         highway
         GIT_REPOSITORY https://github.com/google/highway.git
         GIT_TAG master
 )
+set(BUILD_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(highway)
+
+if(NOT TARGET gtest)
+    FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG main
+    )
+
+    FetchContent_MakeAvailable(googletest)
+    enable_testing()
+endif()
+
 
 # NNUE weights, embed directly into he binary, avoids any relative path issue at runtime
 set(NETWORK_BIN ${CMAKE_CURRENT_SOURCE_DIR}/resources/latest.net)
